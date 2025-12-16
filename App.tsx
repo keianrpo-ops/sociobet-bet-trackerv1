@@ -11,6 +11,7 @@ import { Funds } from './components/Funds';
 import { Messages } from './components/Messages';
 import { Toast } from './components/Toast'; 
 import { ProfileSettingsModal } from './components/ProfileSettingsModal';
+import { ForgotPasswordModal } from './components/ForgotPasswordModal';
 import { sheetApi } from './services/sheetApi'; 
 import { Bet, Partner, BetStatus, Message, Fund, Withdrawal } from './types';
 import { calculateBetOutcome, formatCurrency, calculateDashboardStats } from './utils/calculations';
@@ -39,7 +40,7 @@ const SidebarItem = ({ to, icon: Icon, label, onClick }: any) => (
     className={({ isActive }) => 
       `flex items-center gap-3 px-4 py-3 rounded-lg transition-all mb-1 ${
         isActive 
-          ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-md shadow-blue-200/50 font-semibold' 
+          ? 'bg-gradient-to-r from-orange-600 to-orange-700 text-white shadow-md shadow-orange-200/50 font-semibold' 
           : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium'
       }`
     }
@@ -68,10 +69,14 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
         ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex items-center gap-3">
-          <div className="w-10 h-10 bg-slate-900 dark:bg-slate-700 rounded-xl flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-slate-300 dark:shadow-none">
-            SB
+          {/* LOGO AREA */}
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center overflow-hidden shadow-lg shadow-orange-200 dark:shadow-none bg-slate-900">
+             <img src="/logo.png" alt="Fennix" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.parentElement!.innerText='FX'; e.currentTarget.parentElement!.className='w-10 h-10 bg-slate-900 text-white flex items-center justify-center font-bold rounded-xl'; }} />
           </div>
-          <span className="font-bold text-xl text-slate-800 dark:text-white tracking-tight">SocioBet</span>
+          <span className="font-bold text-lg text-slate-800 dark:text-white tracking-tight leading-tight">
+            FENNIX<br/>
+            <span className="text-orange-600 text-sm">EMPORIUM</span>
+          </span>
           <button className="lg:hidden ml-auto" onClick={() => setSidebarOpen(false)}>
             <X className="w-6 h-6 text-slate-500 dark:text-slate-400" />
           </button>
@@ -174,7 +179,7 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
            {isSyncing && (
                <div className="absolute inset-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-[1px] z-20 flex items-center justify-center animate-in fade-in">
                    <div className="bg-white dark:bg-slate-800 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 border border-slate-200 dark:border-slate-700">
-                       <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+                       <Loader2 className="w-6 h-6 animate-spin text-orange-600" />
                        <div>
                            <h4 className="font-bold text-slate-800 dark:text-white">Conectando con Google Sheets...</h4>
                            <p className="text-xs text-slate-500">Verificando configuración de nube</p>
@@ -215,6 +220,7 @@ const App: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isForgotOpen, setIsForgotOpen] = useState(false); // NEW STATE FOR FORGOT PASSWORD
   const [betToEdit, setBetToEdit] = useState<Bet | null>(null);
   
   const [toast, setToast] = useState<{message: string, sender: string} | null>(null);
@@ -343,6 +349,16 @@ const App: React.FC = () => {
     } else {
         setLoginError('Usuario o contraseña incorrectos');
     }
+  };
+
+  // --- RESET PASSWORD LOGIC ---
+  const handleResetPassword = async (partnerId: string, newPassword: string) => {
+      const partner = partners.find(p => p.partnerId === partnerId);
+      if (partner) {
+          const updated = { ...partner, password: newPassword };
+          setPartners(prev => prev.map(p => p.partnerId === partnerId ? updated : p));
+          await sheetApi.updatePartner(updated);
+      }
   };
 
   // --- CREAR / EDITAR PARTNER ---
@@ -512,11 +528,23 @@ const App: React.FC = () => {
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-[#f0f2f5] dark:bg-slate-900 flex items-center justify-center p-4 transition-colors duration-300">
+        
+        {isForgotOpen && (
+            <ForgotPasswordModal 
+                isOpen={isForgotOpen} 
+                onClose={() => setIsForgotOpen(false)} 
+                partners={partners}
+                onResetPassword={handleResetPassword}
+            />
+        )}
+
         <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-100 dark:border-slate-700">
           <div className="text-center mb-8">
-             <div className="w-14 h-14 bg-slate-900 dark:bg-slate-700 rounded-2xl mx-auto flex items-center justify-center text-white font-bold text-2xl mb-4 shadow-lg shadow-slate-300 dark:shadow-none">SB</div>
-             <h1 className="text-2xl font-bold text-slate-800 dark:text-white">SocioBet</h1>
-             <p className="text-slate-500 dark:text-slate-400">Plataforma de Gestión</p>
+             <div className="w-24 h-24 bg-slate-900 dark:bg-slate-700 rounded-2xl mx-auto flex items-center justify-center text-white font-bold text-2xl mb-4 shadow-lg shadow-orange-200 dark:shadow-none overflow-hidden">
+                <img src="/logo.png" alt="Fennix" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display='none'; e.currentTarget.parentElement!.innerText='FX'; }} />
+             </div>
+             <h1 className="text-2xl font-bold text-slate-800 dark:text-white uppercase tracking-tight">FENNIX EMPORIUM</h1>
+             <p className="text-slate-500 dark:text-slate-400 text-sm">Plataforma de Gestión de Apuestas</p>
           </div>
           
           <form onSubmit={handleLogin} className="space-y-4">
@@ -534,7 +562,7 @@ const App: React.FC = () => {
                     value={loginUsername}
                     onChange={(e) => setLoginUsername(e.target.value)}
                     placeholder="Ej: admin"
-                    className="w-full pl-10 pr-4 py-3 rounded-lg border border-slate-200 dark:border-slate-600 focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-slate-50 dark:bg-slate-700 dark:text-white" 
+                    className="w-full pl-10 pr-4 py-3 rounded-lg border border-slate-200 dark:border-slate-600 focus:ring-2 focus:ring-orange-500 outline-none transition-all bg-slate-50 dark:bg-slate-700 dark:text-white" 
                  />
               </div>
             </div>
@@ -547,11 +575,20 @@ const App: React.FC = () => {
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     placeholder="••••••"
-                    className="w-full pl-10 pr-4 py-3 rounded-lg border border-slate-200 dark:border-slate-600 focus:ring-2 focus:ring-blue-500 outline-none transition-all bg-slate-50 dark:bg-slate-700 dark:text-white" 
+                    className="w-full pl-10 pr-4 py-3 rounded-lg border border-slate-200 dark:border-slate-600 focus:ring-2 focus:ring-orange-500 outline-none transition-all bg-slate-50 dark:bg-slate-700 dark:text-white" 
                  />
               </div>
+              <div className="text-right mt-1">
+                  <button 
+                    type="button" 
+                    onClick={() => setIsForgotOpen(true)}
+                    className="text-xs text-orange-600 hover:text-orange-800 dark:text-orange-400 dark:hover:text-orange-300 font-medium"
+                  >
+                      ¿Olvidaste tu contraseña?
+                  </button>
+              </div>
             </div>
-            <button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-lg transition-all shadow-lg shadow-blue-200 dark:shadow-none transform active:scale-95 mt-2 flex justify-center items-center gap-2">
+            <button className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3.5 rounded-lg transition-all shadow-lg shadow-orange-200 dark:shadow-none transform active:scale-95 mt-2 flex justify-center items-center gap-2">
                {isSyncing ? <Loader2 className="w-5 h-5 animate-spin"/> : 'Iniciar Sesión'}
             </button>
           </form>
@@ -645,7 +682,7 @@ const App: React.FC = () => {
                 {user.role === 'ADMIN' && (
                     <div className="flex gap-2">
                     <select 
-                        className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium shadow-sm"
+                        className="bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 font-medium shadow-sm"
                         value={selectedPartner}
                         onChange={(e) => setSelectedPartner(e.target.value)}
                     >
@@ -654,7 +691,7 @@ const App: React.FC = () => {
                     </select>
                     <button 
                         onClick={() => { setBetToEdit(null); setIsModalOpen(true); }}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200/50 dark:shadow-none"
+                        className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-700 transition-colors shadow-lg shadow-orange-200/50 dark:shadow-none"
                     >
                         + Nueva Apuesta
                     </button>
@@ -695,7 +732,7 @@ const App: React.FC = () => {
                   {user.role === 'ADMIN' && (
                       <button 
                         onClick={() => { setBetToEdit(null); setIsModalOpen(true); }}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200/50 dark:shadow-none"
+                        className="bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-orange-700 transition-colors shadow-lg shadow-orange-200/50 dark:shadow-none"
                     >
                         + Nueva Apuesta
                     </button>

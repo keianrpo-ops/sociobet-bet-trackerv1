@@ -26,12 +26,12 @@ export const ContractModal: React.FC<ContractModalProps> = ({ partner, onAccept,
           {/* Header Legal */}
           <div className="bg-slate-50 dark:bg-slate-900 p-6 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
              <div className="flex items-center gap-4">
-                <div className="p-3 bg-blue-600 rounded-lg text-white">
+                <div className="p-3 bg-orange-600 rounded-lg text-white">
                     <FileText className="w-6 h-6" />
                 </div>
                 <div>
                     <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tight">Contrato de Inversión</h2>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">Términos y Condiciones de Uso - SocioBet v2.1</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Términos y Condiciones de Uso - Fennix Emporium v1.0</p>
                 </div>
              </div>
              <div className="text-right hidden sm:block">
@@ -48,16 +48,16 @@ export const ContractModal: React.FC<ContractModalProps> = ({ partner, onAccept,
               <div className="mb-6 border-b border-slate-100 dark:border-slate-700 pb-4">
                   <p className="font-bold text-lg text-slate-800 dark:text-white mb-2">Acuerdo de Participación Conjunta</p>
                   <p>
-                      Celebrado entre <strong>SocioBet Administración</strong> (en adelante "El Gestor") y <strong>{partner.name}</strong> (en adelante "El Socio"), 
+                      Celebrado entre <strong>Fennix Emporium Administración</strong> (en adelante "El Gestor") y <strong>{partner.name}</strong> (en adelante "El Socio"), 
                       identificado en el sistema con ID {partner.partnerId}.
                   </p>
               </div>
 
               <div className="space-y-4">
-                  <h3 className="font-bold text-slate-800 dark:text-white uppercase text-xs tracking-wider border-l-4 border-blue-500 pl-3">1. Objeto del Contrato</h3>
+                  <h3 className="font-bold text-slate-800 dark:text-white uppercase text-xs tracking-wider border-l-4 border-orange-500 pl-3">1. Objeto del Contrato</h3>
                   <p>El Socio entrega capital al Gestor para ser utilizado exclusivamente en operaciones de apuestas deportivas de alto valor (arbitraje, value betting). El Gestor se compromete a administrar dicho capital con diligencia profesional.</p>
 
-                  <h3 className="font-bold text-slate-800 dark:text-white uppercase text-xs tracking-wider border-l-4 border-blue-500 pl-3">2. Distribución de Utilidades</h3>
+                  <h3 className="font-bold text-slate-800 dark:text-white uppercase text-xs tracking-wider border-l-4 border-orange-500 pl-3">2. Distribución de Utilidades</h3>
                   <p>
                       Las ganancias netas generadas (Gross Profit) se distribuirán de la siguiente manera:
                       <br/>
@@ -87,10 +87,10 @@ export const ContractModal: React.FC<ContractModalProps> = ({ partner, onAccept,
                       </li>
                   </ul>
 
-                  <h3 className="font-bold text-slate-800 dark:text-white uppercase text-xs tracking-wider border-l-4 border-blue-500 pl-3">4. Riesgos</h3>
+                  <h3 className="font-bold text-slate-800 dark:text-white uppercase text-xs tracking-wider border-l-4 border-orange-500 pl-3">4. Riesgos</h3>
                   <p>El Socio declara entender que las inversiones deportivas conllevan riesgo. Aunque el Gestor utiliza estrategias matemáticas para minimizarlo, no se garantiza retorno fijo. El capital está en riesgo.</p>
 
-                  <h3 className="font-bold text-slate-800 dark:text-white uppercase text-xs tracking-wider border-l-4 border-blue-500 pl-3">5. Transparencia</h3>
+                  <h3 className="font-bold text-slate-800 dark:text-white uppercase text-xs tracking-wider border-l-4 border-orange-500 pl-3">5. Transparencia</h3>
                   <p>El Gestor proveerá acceso 24/7 a este Dashboard para que El Socio audite cada movimiento, apuesta y resultado en tiempo real.</p>
               </div>
 
@@ -98,7 +98,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({ partner, onAccept,
                   <p className="text-center font-bold text-slate-400 text-xs uppercase mb-8">Firma Digital</p>
                   <div className="flex justify-between px-10">
                       <div className="text-center">
-                          <div className="font-script text-2xl text-blue-600 mb-2">SocioBet Admin</div>
+                          <div className="font-script text-2xl text-orange-600 mb-2">Fennix Admin</div>
                           <div className="border-t border-slate-300 w-32 mx-auto"></div>
                           <p className="text-xs text-slate-400 mt-1">El Gestor</p>
                       </div>
@@ -117,7 +117,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({ partner, onAccept,
                   <div className="relative flex items-center">
                       <input 
                         type="checkbox" 
-                        className="peer h-5 w-5 cursor-pointer appearance-none rounded border border-slate-300 shadow transition-all checked:border-blue-600 checked:bg-blue-600 hover:shadow-md"
+                        className="peer h-5 w-5 cursor-pointer appearance-none rounded border border-slate-300 shadow transition-all checked:border-orange-600 checked:bg-orange-600 hover:shadow-md"
                         checked={checked}
                         onChange={e => setChecked(e.target.checked)}
                       />
@@ -140,7 +140,7 @@ export const ContractModal: React.FC<ContractModalProps> = ({ partner, onAccept,
                   <button 
                     onClick={onAccept}
                     disabled={!checked}
-                    className="flex-1 sm:flex-none px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-bold shadow-lg shadow-blue-200 dark:shadow-none transition-all active:scale-95 flex items-center justify-center gap-2"
+                    className="flex-1 sm:flex-none px-6 py-2.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-bold shadow-lg shadow-orange-200 dark:shadow-none transition-all active:scale-95 flex items-center justify-center gap-2"
                   >
                       <Shield className="w-4 h-4" /> Firmar Contrato
                   </button>

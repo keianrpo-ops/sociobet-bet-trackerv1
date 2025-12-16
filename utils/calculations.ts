@@ -317,7 +317,7 @@ export const generateProfessionalReport = (
   const rows = [];
   
   // Header Section
-  rows.push(['REPORTE DE RENDIMIENTO - SOCIOBET']);
+  rows.push(['REPORTE DE RENDIMIENTO - FENNIX EMPORIUM']);
   rows.push([`Socio:,${partnerName}`]);
   rows.push([`Fecha de Generación:,${new Date().toLocaleDateString()}`]);
   rows.push([`Periodo:,${dateFrom || 'Inicio'} a ${dateTo || 'Actualidad'}`]);
@@ -376,7 +376,7 @@ export const generateProfessionalReport = (
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', `Reporte_SocioBet_${partnerName}_${new Date().toISOString().split('T')[0]}.csv`);
+  link.setAttribute('download', `Reporte_Fennix_${partnerName}_${new Date().toISOString().split('T')[0]}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
