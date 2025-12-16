@@ -1,97 +1,99 @@
 import { Partner, Bet, Fund, Withdrawal, Message } from '../types';
-import { SHEET_COLUMNS, rowToObject, objectToRow } from '../utils/sheetMapper';
+import { supabase } from '../lib/supabase';
 
-const API_URL = '/api/sheets';
-
-// Helper genérico para fetch
-async function fetchSheetData<T>(tabName: string, columns: string[]): Promise<T[] | null> {
-    try {
-        const res = await fetch(`${API_URL}?tab=${tabName}`);
-        
-        // Si la API dice que faltan credenciales (503), devolvemos null explícito
-        if (res.status === 503) return null;
-        
-        if (!res.ok) throw new Error(`Error fetching ${tabName}`);
-        
-        const data = await res.json();
-        return data as T[];
-    } catch (e) {
-        console.error(`Failed to load ${tabName}`, e);
-        return [];
-    }
-}
-
-async function createItem(tabName: string, item: any, columns: string[]) {
-    const row = objectToRow(item, columns);
-    const res = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tab: tabName, data: row })
-    });
-    return res.json();
-}
-
-async function updateItem(tabName: string, id: string, item: any, columns: string[]) {
-    const row = objectToRow(item, columns);
-    const res = await fetch(API_URL, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tab: tabName, id, data: row })
-    });
-    return res.json();
-}
-
-async function deleteItem(tabName: string, id: string) {
-    const res = await fetch(API_URL, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tab: tabName, id })
-    });
-    return res.json();
-}
-
-// --- PUBLIC METHODS ---
+// --- SUPABASE API SERVICE ---
+// Ya no necesitamos sheetMapper porque Supabase devuelve JSON limpio.
 
 export const sheetApi = {
     // 1. SYNC: Load everything
     async syncAll() {
-        // Ejecutamos todas las peticiones en paralelo
-        const results = await Promise.all([
-            fetchSheetData<Partner>('Partners', SHEET_COLUMNS.PARTNERS),
-            fetchSheetData<Bet>('Bets', SHEET_COLUMNS.BETS),
-            fetchSheetData<Fund>('Funds', SHEET_COLUMNS.FUNDS),
-            fetchSheetData<Withdrawal>('Withdrawals', SHEET_COLUMNS.WITHDRAWALS),
-            fetchSheetData<Message>('Messages', SHEET_COLUMNS.MESSAGES),
-        ]);
+        try {
+            // Ejecutamos todas las peticiones en paralelo a Supabase
+            const [partners, bets, funds, withdrawals, messages] = await Promise.all([
+                supabase.from('Partners').select('*'),
+                supabase.from('Bets').select('*'),
+                supabase.from('Funds').select('*'),
+                supabase.from('Withdrawals').select('*'),
+                supabase.from('Messages').select('*')
+            ]);
 
-        // Si ALGUNA devolvió null (503), asumimos modo local total
-        if (results.some(r => r === null)) {
+            // Si hay error en la conexión o configuración
+            if (partners.error || bets.error) {
+                console.error("Supabase Error:", partners.error || bets.error);
+                return null;
+            }
+
+            return { 
+                partners: partners.data as Partner[], 
+                bets: bets.data as Bet[], 
+                funds: funds.data as Fund[], 
+                withdrawals: withdrawals.data as Withdrawal[], 
+                messages: messages.data as Message[] 
+            };
+        } catch (error) {
+            console.error("Critical Sync Error:", error);
             return null;
         }
-
-        return { 
-            partners: results[0] as Partner[], 
-            bets: results[1] as Bet[], 
-            funds: results[2] as Fund[], 
-            withdrawals: results[3] as Withdrawal[], 
-            messages: results[4] as Message[] 
-        };
     },
 
-    // 2. CREATE
-    async savePartner(p: Partner) { return createItem('Partners', p, SHEET_COLUMNS.PARTNERS); },
-    async saveBet(b: Bet) { return createItem('Bets', b, SHEET_COLUMNS.BETS); },
-    async saveFund(f: Fund) { return createItem('Funds', f, SHEET_COLUMNS.FUNDS); },
-    async saveWithdrawal(w: Withdrawal) { return createItem('Withdrawals', w, SHEET_COLUMNS.WITHDRAWALS); },
-    async saveMessage(m: Message) { return createItem('Messages', m, SHEET_COLUMNS.MESSAGES); },
+    // 2. CREATE (INSERT)
+    async savePartner(p: Partner) { 
+        const { error } = await supabase.from('Partners').insert(p);
+        if (error) throw error;
+        return { success: true };
+    },
+    async saveBet(b: Bet) { 
+        const { error } = await supabase.from('Bets').insert(b);
+        if (error) throw error;
+        return { success: true };
+    },
+    async saveFund(f: Fund) { 
+        const { error } = await supabase.from('Funds').insert(f);
+        if (error) throw error;
+        return { success: true };
+    },
+    async saveWithdrawal(w: Withdrawal) { 
+        const { error } = await supabase.from('Withdrawals').insert(w);
+        if (error) throw error;
+        return { success: true };
+    },
+    async saveMessage(m: Message) { 
+        const { error } = await supabase.from('Messages').insert(m);
+        if (error) throw error;
+        return { success: true };
+    },
 
     // 3. UPDATE
-    async updateBet(b: Bet) { return updateItem('Bets', b.betId, b, SHEET_COLUMNS.BETS); },
-    async updateFund(f: Fund) { return updateItem('Funds', f.fundId, f, SHEET_COLUMNS.FUNDS); },
-    async updateWithdrawal(w: Withdrawal) { return updateItem('Withdrawals', w.withdrawalId, w, SHEET_COLUMNS.WITHDRAWALS); },
-    async updatePartner(p: Partner) { return updateItem('Partners', p.partnerId, p, SHEET_COLUMNS.PARTNERS); },
-    async updateMessage(m: Message) { return updateItem('Messages', m.messageId, m, SHEET_COLUMNS.MESSAGES); },
+    async updateBet(b: Bet) { 
+        const { error } = await supabase.from('Bets').update(b).eq('betId', b.betId);
+        if (error) throw error;
+        return { success: true };
+    },
+    async updateFund(f: Fund) { 
+        const { error } = await supabase.from('Funds').update(f).eq('fundId', f.fundId);
+        if (error) throw error;
+        return { success: true };
+    },
+    async updateWithdrawal(w: Withdrawal) { 
+        const { error } = await supabase.from('Withdrawals').update(w).eq('withdrawalId', w.withdrawalId);
+        if (error) throw error;
+        return { success: true };
+    },
+    async updatePartner(p: Partner) { 
+        const { error } = await supabase.from('Partners').update(p).eq('partnerId', p.partnerId);
+        if (error) throw error;
+        return { success: true };
+    },
+    async updateMessage(m: Message) { 
+        const { error } = await supabase.from('Messages').update(m).eq('messageId', m.messageId);
+        if (error) throw error;
+        return { success: true };
+    },
 
     // 4. DELETE
-    async deleteFund(fundId: string) { return deleteItem('Funds', fundId); }
+    async deleteFund(fundId: string) { 
+        const { error } = await supabase.from('Funds').delete().eq('fundId', fundId);
+        if (error) throw error;
+        return { success: true };
+    }
 };
