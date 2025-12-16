@@ -442,9 +442,26 @@ const App: React.FC = () => {
   const handleSaveBet = async (betData: any) => {
     let newBetObj: Bet | null = null;
     let isNew = false;
+    let partnerNameForToast = '';
 
     if (betToEdit) {
-        // EDICIÓN
+        // --- MODO EDICIÓN CON BITÁCORA ---
+        const changes: string[] = [];
+
+        // 1. Detectar Cambios para Bitácora
+        if (Number(betToEdit.stakeCOP) !== Number(betData.stakeCOP)) {
+            changes.push(`• Inversión: ${formatCurrency(betToEdit.stakeCOP)} ➔ ${formatCurrency(betData.stakeCOP)}`);
+        }
+        if (Number(betToEdit.oddsDecimal) !== Number(betData.oddsDecimal)) {
+            changes.push(`• Cuota: ${betToEdit.oddsDecimal} ➔ ${betData.oddsDecimal}`);
+        }
+        if (betToEdit.status !== betData.status) {
+            changes.push(`• Estado: ${betToEdit.status} ➔ ${betData.status}`);
+        }
+        if (betToEdit.marketDescription !== betData.marketDescription) {
+            changes.push(`• Mercado: ${betToEdit.marketDescription} ➔ ${betData.marketDescription}`);
+        }
+
         const updatedBets = bets.map(b => {
             if (b.betId === betToEdit.betId) {
                 const partner = partners.find(p => p.partnerId === betData.partnerId);
@@ -457,18 +474,34 @@ const App: React.FC = () => {
             }
             return b;
         });
-        setBets(updatedBets);
-        if (newBetObj) await sheetApi.updateBet(newBetObj);
+
+        setBets(updatedBets); // Actualizar Estado Local
         
-        await sendSystemNotification(
-            betData.partnerId,
-            "✏️ Apuesta Modificada",
-            `⚠️ **ACTUALIZACIÓN ADMINISTRATIVA**\n\nEl administrador ha realizado una corrección en los detalles de la apuesta:\n\n⚽ **Evento:** ${betData.homeTeam} vs ${betData.awayTeam}\n📝 **Nota:** Por favor verifica los datos actualizados en tu historial.`
-        );
+        if (newBetObj) {
+            await sheetApi.updateBet(newBetObj);
+            
+            // 2. Calcular Saldo Actualizado (Snapshot)
+            const partnerStats = calculateDashboardStats(updatedBets, partners, betData.partnerId, funds, withdrawals);
+            const newBalance = partnerStats.currentBalance;
+            const balanceMsg = `\n\n💰 **Nuevo Saldo Disponible:** ${formatCurrency(newBalance)}`;
+
+            // 3. Generar Mensaje de Auditoría Detallado
+            const changeLog = changes.length > 0 ? changes.join('\n') : "• Corrección menor de datos o notas.";
+            
+            await sendSystemNotification(
+                betData.partnerId,
+                "📝 Auditoría: Apuesta Modificada",
+                `⚠️ **ACTUALIZACIÓN DE MOVIMIENTO**\n--------------------------------\nEl administrador ha realizado ajustes en la operación:\n\n⚽ **Evento:** ${betData.homeTeam} vs ${betData.awayTeam}\n\n📋 **Bitácora de Cambios:**\n${changeLog}${balanceMsg}`
+            );
+
+            // Obtener nombre para Toast
+            const p = partners.find(p => p.partnerId === betData.partnerId);
+            partnerNameForToast = p ? p.name : 'Socio';
+        }
 
         setBetToEdit(null);
     } else {
-        // NUEVA
+        // --- MODO NUEVA APUESTA ---
         isNew = true;
         const newBet: Bet = {
           ...betData,
@@ -486,9 +519,21 @@ const App: React.FC = () => {
             "🎲 Nueva Inversión",
             `🔔 **NUEVA APUESTA REGISTRADA**\n--------------------------------\n⚽ **Evento:** ${newBet.homeTeam} vs ${newBet.awayTeam}\n🎯 **Mercado:** ${newBet.marketDescription}\n\n📥 **Inversión (Stake):** ${formatCurrency(newBet.stakeCOP)}\n📊 **Cuota:** ${newBet.oddsDecimal}\n🏆 **Retorno Potencial:** ${formatCurrency(newBet.expectedReturnCOP)}\n\n*La operación ya se encuentra activa en tu portafolio.*`
         );
+        
+        const p = partners.find(p => p.partnerId === betData.partnerId);
+        partnerNameForToast = p ? p.name : 'Socio';
     }
+    
     setIsModalOpen(false);
-    if(newBetObj) setToast({ message: isNew ? "Apuesta registrada" : "Apuesta actualizada", sender: "Sistema" });
+    
+    // --- TOAST PERSONALIZADO ---
+    if(newBetObj) {
+        if (isNew) {
+            setToast({ message: `Apuesta creada para ${partnerNameForToast}`, sender: "Sistema" });
+        } else {
+            setToast({ message: `Notificación de cambios enviada a ${partnerNameForToast}`, sender: "Auditoría" });
+        }
+    }
   };
 
   // --- UPDATE STATUS (RESULTADOS) ---
@@ -498,6 +543,7 @@ const App: React.FC = () => {
 
       let targetBet: Bet | undefined;
 
+      // 1. Calcular el nuevo estado de la apuesta
       const updatedBets = bets.map(bet => {
           if (bet.betId === betId) {
              const updatedBet = { ...bet, status: newStatus, cashoutReturnCOP: cashoutVal };
@@ -519,40 +565,47 @@ const App: React.FC = () => {
           return bet;
       });
       
+      // 2. Actualizar Estado Global
       setBets(updatedBets);
       
+      // 3. Notificar y Calcular Saldo
       if (targetBet && targetBet.partnerId) {
           try {
               await sheetApi.updateBet(targetBet);
               
               const partner = partners.find(p => p.partnerId === targetBet!.partnerId);
               const sharePct = partner?.partnerProfitPct || 50;
+
+              // CALCULAR SALDO POSTERIOR (SNAPSHOT REAL)
+              const partnerStats = calculateDashboardStats(updatedBets, partners, targetBet.partnerId, funds, withdrawals);
+              const newBalance = partnerStats.currentBalance;
+              const balanceMsg = `\n\n💰 **Nuevo Saldo Disponible:** ${formatCurrency(newBalance)}`;
               
               // MENSAJES DETALLADOS POR ESTADO
               if (newStatus === 'WON') {
                   await sendSystemNotification(
                       targetBet.partnerId,
                       "✅ ¡Victoria! Apuesta Ganada",
-                      `🎉 **OPERACIÓN EXITOSA**\n--------------------------------\n⚽ **Evento:** ${targetBet.homeTeam} vs ${targetBet.awayTeam}\n🎯 **Mercado:** ${targetBet.marketDescription}\n\n📥 **Inversión:** ${formatCurrency(targetBet.stakeCOP)}\n📤 **Retorno Total:** ${formatCurrency(targetBet.finalReturnCOP || 0)}\n\n📈 **Ganancia Bruta:** ${formatCurrency(targetBet.profitGrossCOP || 0)}\n🤝 **Tu Utilidad Neta (${sharePct}%):** ${formatCurrency(targetBet.profitPartnerCOP || 0)}\n\n*El saldo ha sido acreditado a tu cuenta.*`
+                      `🎉 **OPERACIÓN EXITOSA**\n--------------------------------\n⚽ **Evento:** ${targetBet.homeTeam} vs ${targetBet.awayTeam}\n🎯 **Mercado:** ${targetBet.marketDescription}\n\n📥 **Inversión:** ${formatCurrency(targetBet.stakeCOP)}\n📤 **Retorno Total:** ${formatCurrency(targetBet.finalReturnCOP || 0)}\n\n📈 **Ganancia Bruta:** ${formatCurrency(targetBet.profitGrossCOP || 0)}\n🤝 **Tu Utilidad Neta (${sharePct}%):** ${formatCurrency(targetBet.profitPartnerCOP || 0)}${balanceMsg}`
                   );
               } else if (newStatus === 'LOST') {
                   await sendSystemNotification(
                       targetBet.partnerId,
                       "❌ Resultado Negativo",
-                      `📉 **OPERACIÓN CERRADA EN PÉRDIDA**\n--------------------------------\n⚽ **Evento:** ${targetBet.homeTeam} vs ${targetBet.awayTeam}\n\n📥 **Inversión:** ${formatCurrency(targetBet.stakeCOP)}\n📤 **Retorno:** $ 0\n\n*El sistema continuará operando para recuperar el capital según la estrategia de gestión de riesgo.*`
+                      `📉 **OPERACIÓN CERRADA EN PÉRDIDA**\n--------------------------------\n⚽ **Evento:** ${targetBet.homeTeam} vs ${targetBet.awayTeam}\n\n📥 **Inversión:** ${formatCurrency(targetBet.stakeCOP)}\n📤 **Retorno:** $ 0\n\n*El sistema continuará operando para recuperar el capital según la estrategia de gestión de riesgo.*${balanceMsg}`
                   );
               } else if (newStatus === 'CASHED_OUT') {
                   const isProfit = (targetBet.profitGrossCOP || 0) > 0;
                   await sendSystemNotification(
                       targetBet.partnerId,
                       "💰 Cash Out Confirmado",
-                      `🔄 **CIERRE ANTICIPADO (CASH OUT)**\n--------------------------------\nEl sistema ha cerrado la operación manualmente para asegurar ganancias o mitigar riesgos.\n\n⚽ **Evento:** ${targetBet.homeTeam} vs ${targetBet.awayTeam}\n\n📥 **Inversión Inicial:** ${formatCurrency(targetBet.stakeCOP)}\n↪️ **Valor Recuperado:** ${formatCurrency(targetBet.finalReturnCOP || 0)}\n\n📊 **Resultado Operación:** ${isProfit ? '+' : ''}${formatCurrency(targetBet.profitGrossCOP || 0)}\n\n*Saldo actualizado.*`
+                      `🔄 **CIERRE ANTICIPADO (CASH OUT)**\n--------------------------------\nEl sistema ha cerrado la operación manualmente para asegurar ganancias o mitigar riesgos.\n\n⚽ **Evento:** ${targetBet.homeTeam} vs ${targetBet.awayTeam}\n\n📥 **Inversión Inicial:** ${formatCurrency(targetBet.stakeCOP)}\n↪️ **Valor Recuperado:** ${formatCurrency(targetBet.finalReturnCOP || 0)}\n\n📊 **Resultado Operación:** ${isProfit ? '+' : ''}${formatCurrency(targetBet.profitGrossCOP || 0)}${balanceMsg}`
                   );
               } else if (newStatus === 'VOID') {
                   await sendSystemNotification(
                       targetBet.partnerId,
                       "⚠️ Apuesta Anulada (Void)",
-                      `⛔ **OPERACIÓN ANULADA**\n--------------------------------\nLa casa de apuestas ha anulado el evento ${targetBet.homeTeam} vs ${targetBet.awayTeam}.\n\n📥 **Inversión:** ${formatCurrency(targetBet.stakeCOP)}\n🔄 **Reembolso:** ${formatCurrency(targetBet.stakeCOP)}\n\n*El dinero ha regresado íntegramente a tu saldo sin generar ganancias ni pérdidas.*`
+                      `⛔ **OPERACIÓN ANULADA**\n--------------------------------\nLa casa de apuestas ha anulado el evento ${targetBet.homeTeam} vs ${targetBet.awayTeam}.\n\n📥 **Inversión:** ${formatCurrency(targetBet.stakeCOP)}\n🔄 **Reembolso:** ${formatCurrency(targetBet.stakeCOP)}\n\n*El dinero ha regresado íntegramente a tu saldo sin generar ganancias ni pérdidas.*${balanceMsg}`
                   );
               }
 

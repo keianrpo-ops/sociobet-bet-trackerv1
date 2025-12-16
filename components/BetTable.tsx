@@ -35,8 +35,9 @@ export const BetTable: React.FC<BetTableProps> = ({
   const [filterStatus, setFilterStatus] = useState<'ALL' | BetStatus>('ALL');
   const [localPartnerFilter, setLocalPartnerFilter] = useState<string>('ALL');
 
-  // Estado para Modal de Cashout
+  // Estado para Modal de Cashout y Warning
   const [cashoutModal, setCashoutModal] = useState<{ id: string, amount: string } | null>(null);
+  const [warningModal, setWarningModal] = useState<string | null>(null); // Guardará el ID de la apuesta a editar
 
   // Generar Ledger unificado USANDO SOCIOS REALES
   const ledger = useMemo(() => 
@@ -112,9 +113,23 @@ export const BetTable: React.FC<BetTableProps> = ({
       }
   };
 
-  const handleEditClick = (realBetId: string) => {
-      if (onEditBet && realBetId) onEditBet(realBetId);
+  // --- SAFETY EDIT HANDLER ---
+  const handleEditClick = (realBetId: string, status: string) => {
+      // Si la apuesta NO es pendiente, mostrar advertencia
+      if (status && status !== 'PENDING') {
+          setWarningModal(realBetId);
+      } else {
+          // Si es PENDING, editar directo
+          if (onEditBet && realBetId) onEditBet(realBetId);
+      }
   }
+
+  const confirmEdit = () => {
+      if (onEditBet && warningModal) {
+          onEditBet(warningModal);
+      }
+      setWarningModal(null);
+  };
 
   // Helper para Badge de Estado
   const getStatusBadge = (status: string, category: string) => {
@@ -263,44 +278,54 @@ export const BetTable: React.FC<BetTableProps> = ({
                     <td className="px-6 py-4 text-center bg-slate-50/30 dark:bg-slate-800/30">
                         {item.category === 'BET_STAKE' ? (
                             <div className="flex justify-center gap-1">
+                                {/* BOTÓN DE EDICIÓN: Siempre activo, pero con advertencia si no es pending */}
                                 <button 
-                                    onClick={() => handleEditClick(item.originalBetId)}
+                                    onClick={() => handleEditClick(item.originalBetId, item.status)}
                                     className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md transition-colors border border-blue-200 shadow-sm"
-                                    title="Editar Apuesta"
+                                    title="Editar Apuesta (Corregir)"
                                 >
                                     <Edit2 className="w-4 h-4" />
                                 </button>
                                 
                                 <div className="w-px h-4 bg-slate-300 mx-1 self-center" />
 
-                                <button 
-                                    onClick={() => handleAction(item.originalBetId, 'WON')}
-                                    className="p-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-md transition-colors border border-emerald-200 shadow-sm"
-                                    title="Ganada"
-                                >
-                                    <CheckCircle className="w-4 h-4" />
-                                </button>
-                                <button 
-                                    onClick={() => handleAction(item.originalBetId, 'LOST')}
-                                    className="p-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md transition-colors border border-rose-200 shadow-sm"
-                                    title="Perdida"
-                                >
-                                    <XCircle className="w-4 h-4" />
-                                </button>
-                                <button 
-                                    onClick={() => handleAction(item.originalBetId, 'CASHED_OUT')}
-                                    className="p-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition-colors border border-blue-200 shadow-sm"
-                                    title="Cash Out (Retiro Anticipado)"
-                                >
-                                    <DollarSign className="w-4 h-4" />
-                                </button>
-                                <button 
-                                    onClick={() => handleAction(item.originalBetId, 'VOID')}
-                                    className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md transition-colors border border-slate-200 shadow-sm"
-                                    title="Anular"
-                                >
-                                    <Ban className="w-4 h-4" />
-                                </button>
+                                {/* BOTONES DE ACCIÓN: Se desactivan si la apuesta ya está resuelta */}
+                                {['WON', 'LOST', 'CASHED_OUT', 'VOID'].map(actionType => {
+                                    const isPending = item.status === 'PENDING';
+                                    let btnClass = "p-1.5 rounded-md transition-colors border shadow-sm ";
+                                    let icon = null;
+                                    let title = "";
+
+                                    if (actionType === 'WON') {
+                                        btnClass += isPending ? "bg-emerald-100 hover:bg-emerald-200 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-400 border-slate-200 opacity-30 cursor-not-allowed grayscale";
+                                        icon = <CheckCircle className="w-4 h-4" />;
+                                        title = "Ganada";
+                                    } else if (actionType === 'LOST') {
+                                        btnClass += isPending ? "bg-rose-100 hover:bg-rose-200 text-rose-700 border-rose-200" : "bg-slate-100 text-slate-400 border-slate-200 opacity-30 cursor-not-allowed grayscale";
+                                        icon = <XCircle className="w-4 h-4" />;
+                                        title = "Perdida";
+                                    } else if (actionType === 'CASHED_OUT') {
+                                        btnClass += isPending ? "bg-blue-100 hover:bg-blue-200 text-blue-700 border-blue-200" : "bg-slate-100 text-slate-400 border-slate-200 opacity-30 cursor-not-allowed grayscale";
+                                        icon = <DollarSign className="w-4 h-4" />;
+                                        title = "Cash Out";
+                                    } else {
+                                        btnClass += isPending ? "bg-slate-100 hover:bg-slate-200 text-slate-600 border-slate-200" : "bg-slate-100 text-slate-400 border-slate-200 opacity-30 cursor-not-allowed grayscale";
+                                        icon = <Ban className="w-4 h-4" />;
+                                        title = "Anular";
+                                    }
+
+                                    return (
+                                        <button 
+                                            key={actionType}
+                                            onClick={() => isPending && handleAction(item.originalBetId, actionType as BetStatus)}
+                                            className={btnClass}
+                                            title={isPending ? title : "Acción deshabilitada (Apuesta cerrada)"}
+                                            disabled={!isPending}
+                                        >
+                                            {icon}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         ) : (
                             <span className="text-xs text-slate-300 block w-20 mx-auto opacity-20">-</span>
@@ -363,6 +388,47 @@ export const BetTable: React.FC<BetTableProps> = ({
                           <button type="submit" className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold shadow-md">Confirmar</button>
                       </div>
                   </form>
+              </div>
+          </div>
+      )}
+
+      {/* WARNING EDIT MODAL */}
+      {warningModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in zoom-in-95 duration-200">
+              <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 dark:border-slate-700">
+                  <div className="px-6 py-4 border-b border-rose-100 dark:border-rose-900/30 bg-rose-50 dark:bg-rose-900/20 flex justify-between items-center">
+                      <h3 className="font-bold text-rose-700 dark:text-rose-400 flex items-center gap-2">
+                          <AlertCircle className="w-5 h-5" /> Advertencia de Seguridad
+                      </h3>
+                      <button onClick={() => setWarningModal(null)} className="text-rose-400 hover:text-rose-600">
+                          <X className="w-5 h-5" />
+                      </button>
+                  </div>
+                  <div className="p-6">
+                      <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed mb-4">
+                          <strong>¡Cuidado!</strong> Esta apuesta ya fue procesada y su resultado afectó el saldo contable del socio.
+                      </p>
+                      <p className="text-slate-500 dark:text-slate-400 text-xs mb-6">
+                          Editarla ahora modificará el historial financiero retroactivamente. Solo haz esto si cometiste un error de digitación al registrarla.
+                          <br/><br/>
+                          ¿Estás seguro de que deseas continuar?
+                      </p>
+                      
+                      <div className="flex gap-3">
+                          <button 
+                            onClick={() => setWarningModal(null)} 
+                            className="flex-1 py-2.5 border border-slate-300 dark:border-slate-600 rounded-lg text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"
+                          >
+                              Cancelar
+                          </button>
+                          <button 
+                            onClick={confirmEdit} 
+                            className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-bold shadow-lg shadow-rose-200 dark:shadow-none"
+                          >
+                              Sí, editar apuesta
+                          </button>
+                      </div>
+                  </div>
               </div>
           </div>
       )}
