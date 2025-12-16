@@ -2,10 +2,10 @@ import React, { useMemo, useState } from 'react';
 import { Bet, BetStatus, Fund, Withdrawal, Partner } from '../types';
 import { formatCurrency, generateLedger } from '../utils/calculations';
 import { Search, ChevronLeft, ChevronRight, AlertCircle, ArrowDownCircle, ArrowUpCircle, Target, Wallet, CheckCircle, XCircle, Ban, DollarSign, Filter, Calendar, Edit2, Save, X } from 'lucide-react';
-import { MOCK_PARTNERS } from '../services/mockData'; 
 
 interface BetTableProps {
   bets: Bet[];
+  partners: Partner[]; // Recibir socios reales
   onUpdateStatus: (betId: string, newStatus: BetStatus, cashoutValue?: number) => void;
   onEditBet?: (betId: string) => void;
   isAdmin: boolean;
@@ -18,6 +18,7 @@ const ITEMS_PER_PAGE = 15;
 
 export const BetTable: React.FC<BetTableProps> = ({ 
     bets, 
+    partners, // Props
     onUpdateStatus, 
     onEditBet,
     isAdmin, 
@@ -37,10 +38,10 @@ export const BetTable: React.FC<BetTableProps> = ({
   // Estado para Modal de Cashout
   const [cashoutModal, setCashoutModal] = useState<{ id: string, amount: string } | null>(null);
 
-  // Generar Ledger unificado
+  // Generar Ledger unificado USANDO SOCIOS REALES
   const ledger = useMemo(() => 
-    generateLedger(bets, funds, withdrawals, selectedPartnerId, MOCK_PARTNERS),
-  [bets, funds, withdrawals, selectedPartnerId]);
+    generateLedger(bets, funds, withdrawals, selectedPartnerId, partners),
+  [bets, funds, withdrawals, selectedPartnerId, partners]);
 
   // Lógica de Filtrado Avanzado
   const filteredLedger = useMemo(() => {
@@ -64,12 +65,14 @@ export const BetTable: React.FC<BetTableProps> = ({
         // 4. Filtro Socio (Local en tabla global)
         let matchesPartner = true;
         if (selectedPartnerId === 'ALL' && localPartnerFilter !== 'ALL') {
-             matchesPartner = item.partnerName === MOCK_PARTNERS.find(p => p.partnerId === localPartnerFilter)?.name;
+             // Buscar el nombre del socio seleccionado en el filtro local
+             const pName = partners.find(p => p.partnerId === localPartnerFilter)?.name;
+             if (pName) matchesPartner = item.partnerName === pName;
         }
 
         return matchesSearch && matchesDate && matchesStatus && matchesPartner;
     });
-  }, [ledger, searchTerm, dateFrom, dateTo, filterStatus, localPartnerFilter, selectedPartnerId]);
+  }, [ledger, searchTerm, dateFrom, dateTo, filterStatus, localPartnerFilter, selectedPartnerId, partners]);
 
   // Paginación
   const totalPages = Math.ceil(filteredLedger.length / ITEMS_PER_PAGE);
@@ -78,9 +81,15 @@ export const BetTable: React.FC<BetTableProps> = ({
   const currentBalance = ledger.length > 0 ? ledger[0].runningBalance : 0;
 
   // Manejadores de Acción
-  const handleAction = (ledgerId: string, action: BetStatus) => {
-      const realBetId = ledgerId.split('-')[0];
+  // CORRECCIÓN CRÍTICA: Recibir el betId directo, sin hacer split de strings
+  const handleAction = (realBetId: string, action: BetStatus) => {
       
+      if (!realBetId) {
+          console.error("ID de apuesta no válido");
+          alert("Error: ID de apuesta no identificado. Intenta recargar la página.");
+          return;
+      }
+
       if (action === 'CASHED_OUT') {
           // Abrir Modal de Cashout
           setCashoutModal({ id: realBetId, amount: '' });
@@ -103,9 +112,8 @@ export const BetTable: React.FC<BetTableProps> = ({
       }
   };
 
-  const handleEditClick = (ledgerId: string) => {
-      const realBetId = ledgerId.split('-')[0];
-      if (onEditBet) onEditBet(realBetId);
+  const handleEditClick = (realBetId: string) => {
+      if (onEditBet && realBetId) onEditBet(realBetId);
   }
 
   // Helper para Badge de Estado
@@ -167,7 +175,7 @@ export const BetTable: React.FC<BetTableProps> = ({
                         onChange={(e) => setLocalPartnerFilter(e.target.value)}
                     >
                         <option value="ALL">Todos los Socios</option>
-                        {MOCK_PARTNERS.filter(p => p.partnerId !== 'P001').map(p => (
+                        {partners.filter(p => p.partnerId !== 'P001').map(p => (
                             <option key={p.partnerId} value={p.partnerId}>{p.name}</option>
                         ))}
                     </select>
@@ -218,9 +226,15 @@ export const BetTable: React.FC<BetTableProps> = ({
               <tr key={`${item.id}-${idx}`} className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors group">
                 <td className="px-6 py-4 whitespace-nowrap text-slate-500 dark:text-slate-400 font-mono text-xs">{item.date}</td>
                 <td className="px-6 py-4">
-                     <span className="font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-600 px-2 py-1 rounded text-xs whitespace-nowrap border border-slate-200 dark:border-slate-500">
-                        {item.partnerName}
-                     </span>
+                     {item.partnerName === 'Desconocido' ? (
+                         <span className="font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-2 py-1 rounded text-xs whitespace-nowrap border border-amber-200 dark:border-amber-800">
+                            Desc.
+                         </span>
+                     ) : (
+                         <span className="font-bold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-600 px-2 py-1 rounded text-xs whitespace-nowrap border border-slate-200 dark:border-slate-500">
+                            {item.partnerName}
+                         </span>
+                     )}
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
@@ -250,7 +264,7 @@ export const BetTable: React.FC<BetTableProps> = ({
                         {item.category === 'BET_STAKE' ? (
                             <div className="flex justify-center gap-1">
                                 <button 
-                                    onClick={() => handleEditClick(item.id)}
+                                    onClick={() => handleEditClick(item.originalBetId)}
                                     className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md transition-colors border border-blue-200 shadow-sm"
                                     title="Editar Apuesta"
                                 >
@@ -260,28 +274,28 @@ export const BetTable: React.FC<BetTableProps> = ({
                                 <div className="w-px h-4 bg-slate-300 mx-1 self-center" />
 
                                 <button 
-                                    onClick={() => handleAction(item.id, 'WON')}
+                                    onClick={() => handleAction(item.originalBetId, 'WON')}
                                     className="p-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-md transition-colors border border-emerald-200 shadow-sm"
                                     title="Ganada"
                                 >
                                     <CheckCircle className="w-4 h-4" />
                                 </button>
                                 <button 
-                                    onClick={() => handleAction(item.id, 'LOST')}
+                                    onClick={() => handleAction(item.originalBetId, 'LOST')}
                                     className="p-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-md transition-colors border border-rose-200 shadow-sm"
                                     title="Perdida"
                                 >
                                     <XCircle className="w-4 h-4" />
                                 </button>
                                 <button 
-                                    onClick={() => handleAction(item.id, 'CASHED_OUT')}
+                                    onClick={() => handleAction(item.originalBetId, 'CASHED_OUT')}
                                     className="p-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-md transition-colors border border-blue-200 shadow-sm"
                                     title="Cash Out (Retiro Anticipado)"
                                 >
                                     <DollarSign className="w-4 h-4" />
                                 </button>
                                 <button 
-                                    onClick={() => handleAction(item.id, 'VOID')}
+                                    onClick={() => handleAction(item.originalBetId, 'VOID')}
                                     className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md transition-colors border border-slate-200 shadow-sm"
                                     title="Anular"
                                 >
