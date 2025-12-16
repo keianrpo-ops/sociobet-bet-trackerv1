@@ -31,12 +31,16 @@ const saveState = (key: string, value: any) => {
     localStorage.setItem(key, JSON.stringify(value));
 };
 
+// --- SAFE ICON COMPONENT (ESCUDO PROTECTOR) ---
+// Este componente evita que la app se rompa si un icono falla al cargar.
+const SafeIcon = ({ icon, className }: { icon: any, className?: string }) => {
+    const IconComponent = icon || AlertCircle; 
+    return <IconComponent className={className} />;
+};
+
 // --- Components for Layout ---
 
-// FIX: Componente defensivo. Si el icono es undefined, usa un fallback para evitar pantalla blanca.
-const SidebarItem = ({ to, icon: Icon, label, onClick }: any) => {
-  const IconToRender = Icon || AlertCircle; // Fallback de seguridad
-  
+const SidebarItem = ({ to, icon, label, onClick }: any) => {
   return (
     <NavLink 
       to={to} 
@@ -49,7 +53,7 @@ const SidebarItem = ({ to, icon: Icon, label, onClick }: any) => {
         }`
       }
     >
-      <IconToRender className="w-5 h-5" />
+      <SafeIcon icon={icon} className="w-5 h-5" />
       <span className="">{label}</span>
     </NavLink>
   );
@@ -83,7 +87,7 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
             <span className="text-orange-600 text-sm">EMPORIUM</span>
           </span>
           <button className="lg:hidden ml-auto" onClick={() => setSidebarOpen(false)}>
-            <X className="w-6 h-6 text-slate-500 dark:text-slate-400" />
+            <SafeIcon icon={X} className="w-6 h-6 text-slate-500 dark:text-slate-400" />
           </button>
         </div>
 
@@ -105,14 +109,14 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
         <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
            <div className="flex items-center gap-3 p-3 bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl mb-3 shadow-sm relative group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors" onClick={onOpenProfile}>
              <div className="bg-slate-100 dark:bg-slate-600 p-1 rounded-full">
-                <UserCircle className="w-8 h-8 text-slate-500 dark:text-slate-300" />
+                <SafeIcon icon={UserCircle} className="w-8 h-8 text-slate-500 dark:text-slate-300" />
              </div>
              <div className="overflow-hidden flex-1">
                <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{user.name}</p>
                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.role === 'ADMIN' ? 'Administrador' : 'Socio'}</p>
              </div>
              <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <Settings className="w-4 h-4 text-slate-400" />
+                <SafeIcon icon={Settings} className="w-4 h-4 text-slate-400" />
              </div>
            </div>
            
@@ -122,14 +126,14 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
                     className="flex-1 flex items-center justify-center gap-2 text-slate-600 dark:text-slate-300 text-xs font-bold py-2.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600"
                     title="Configuración de Perfil"
                 >
-                    <Settings className="w-4 h-4" /> Configurar
+                    <SafeIcon icon={Settings} className="w-4 h-4" /> Configurar
                 </button>
                 <button 
                     onClick={onLogout}
                     className="flex-1 flex items-center justify-center gap-2 text-rose-600 dark:text-rose-400 text-xs font-bold py-2.5 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors border border-transparent hover:border-rose-100 dark:hover:border-rose-800"
                     title="Cerrar Sesión"
                 >
-                    <LogOut className="w-4 h-4" /> Salir
+                    <SafeIcon icon={LogOut} className="w-4 h-4" /> Salir
                 </button>
            </div>
         </div>
@@ -143,14 +147,14 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
             className="lg:hidden p-2 -ml-2 text-slate-600 dark:text-slate-200"
             onClick={() => setSidebarOpen(true)}
           >
-            <Menu className="w-6 h-6" />
+            <SafeIcon icon={Menu} className="w-6 h-6" />
           </button>
           
           <div className="ml-auto flex items-center gap-4">
              {/* Local Mode Badge */}
              {isDemoMode && (
                 <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-full animate-pulse">
-                    <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    <SafeIcon icon={WifiOff} className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                     <span className="text-xs font-bold text-amber-700 dark:text-amber-300">Modo Local (Sin conexión a Sheets)</span>
                 </div>
              )}
@@ -160,7 +164,7 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
                 onClick={toggleTheme}
                 className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors font-medium text-xs border border-slate-200 dark:border-slate-600"
              >
-                {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-500" />}
+                {isDarkMode ? <SafeIcon icon={Sun} className="w-4 h-4 text-amber-400" /> : <SafeIcon icon={Moon} className="w-4 h-4 text-slate-500" />}
                 <span className="hidden sm:inline">{isDarkMode ? 'Modo Claro' : 'Modo Oscuro'}</span>
              </button>
 
@@ -174,7 +178,7 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
                     : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600'
                 }`}
              >
-               <CloudDownload className={`w-4 h-4 ${isSyncing ? 'animate-bounce' : ''}`} /> 
+               <SafeIcon icon={CloudDownload} className={`w-4 h-4 ${isSyncing ? 'animate-bounce' : ''}`} /> 
                <span className="hidden sm:inline">{isSyncing ? 'Descargando...' : (isDemoMode ? 'Reconectar' : 'Descargar Datos')}</span>
              </button>
           </div>
@@ -185,7 +189,7 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
            {isSyncing && (
                <div className="absolute inset-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-[1px] z-20 flex items-center justify-center animate-in fade-in">
                    <div className="bg-white dark:bg-slate-800 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 border border-slate-200 dark:border-slate-700">
-                       <Loader2 className="w-6 h-6 animate-spin text-orange-600" />
+                       <SafeIcon icon={Loader2} className="w-6 h-6 animate-spin text-orange-600" />
                        <div>
                            <h4 className="font-bold text-slate-800 dark:text-white">Conectando con Google Sheets...</h4>
                            <p className="text-xs text-slate-500">Descargando últimos datos</p>
@@ -599,7 +603,7 @@ const App: React.FC = () => {
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Usuario</label>
               <div className="relative">
-                 <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                 <SafeIcon icon={UserCircle} className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                  <input 
                     type="text" 
                     value={loginUsername}
@@ -612,7 +616,7 @@ const App: React.FC = () => {
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1">Contraseña</label>
               <div className="relative">
-                 <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                 <SafeIcon icon={Key} className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                  <input 
                     type="password" 
                     value={loginPassword}
@@ -632,14 +636,14 @@ const App: React.FC = () => {
               </div>
             </div>
             <button className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-3.5 rounded-lg transition-all shadow-lg shadow-orange-200 dark:shadow-none transform active:scale-95 mt-2 flex justify-center items-center gap-2">
-               {isSyncing ? <Loader2 className="w-5 h-5 animate-spin"/> : 'Iniciar Sesión'}
+               {isSyncing ? <SafeIcon icon={Loader2} className="w-5 h-5 animate-spin"/> : 'Iniciar Sesión'}
             </button>
           </form>
 
           {partners.length === 0 && !isSyncing && (
              <div className="mt-6 text-center bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg border border-amber-100 dark:border-amber-800">
                  <p className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1 flex justify-center items-center gap-1">
-                    <Database className="w-3 h-3" /> Base de datos vacía
+                    <SafeIcon icon={Database} className="w-3 h-3" /> Base de datos vacía
                  </p>
                  <p className="text-[10px] text-amber-600 dark:text-amber-500 mb-2">
                      Ingresa como <b>admin / 123</b> para inicializar la nube.
