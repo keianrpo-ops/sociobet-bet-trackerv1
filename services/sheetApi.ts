@@ -4,20 +4,16 @@ import { SHEET_COLUMNS, rowToObject, objectToRow } from '../utils/sheetMapper';
 const API_URL = '/api/sheets';
 
 // Helper genérico para fetch
-async function fetchSheetData<T>(tabName: string, columns: string[]): Promise<T[]> {
+async function fetchSheetData<T>(tabName: string, columns: string[]): Promise<T[] | null> {
     try {
         const res = await fetch(`${API_URL}?tab=${tabName}`);
+        
+        // Si la API dice que faltan credenciales (503), devolvemos null explícito
+        if (res.status === 503) return null;
+        
         if (!res.ok) throw new Error(`Error fetching ${tabName}`);
         
-        const data = await res.json(); // Array of Objects from API (GET returns objects now)
-        
-        // Si la API devuelve objetos ya mapeados (según mi implementación en route.ts), los usamos directo.
-        // Pero para asegurar tipos, podemos re-validar o simplemente castear.
-        // Nota: Si route.ts devuelve array de arrays, usamos rowToObject.
-        // Vamos a asumir que route.ts devuelve array de objetos para simplificar,
-        // O si devuelve Raw Rows, mapeamos aquí.
-        // MI IMPLEMENTACIÓN SUGERIDA EN ROUTE.TS devuelve OBJETOS.
-        
+        const data = await res.json();
         return data as T[];
     } catch (e) {
         console.error(`Failed to load ${tabName}`, e);
@@ -26,7 +22,6 @@ async function fetchSheetData<T>(tabName: string, columns: string[]): Promise<T[
 }
 
 async function createItem(tabName: string, item: any, columns: string[]) {
-    // Convert to Array for appending
     const row = objectToRow(item, columns);
     const res = await fetch(API_URL, {
         method: 'POST',
@@ -51,15 +46,27 @@ async function updateItem(tabName: string, id: string, item: any, columns: strin
 export const sheetApi = {
     // 1. SYNC: Load everything
     async syncAll() {
-        // Ejecutamos todas las peticiones en paralelo para velocidad
-        const [partners, bets, funds, withdrawals, messages] = await Promise.all([
+        // Ejecutamos todas las peticiones en paralelo
+        const results = await Promise.all([
             fetchSheetData<Partner>('Partners', SHEET_COLUMNS.PARTNERS),
             fetchSheetData<Bet>('Bets', SHEET_COLUMNS.BETS),
             fetchSheetData<Fund>('Funds', SHEET_COLUMNS.FUNDS),
             fetchSheetData<Withdrawal>('Withdrawals', SHEET_COLUMNS.WITHDRAWALS),
             fetchSheetData<Message>('Messages', SHEET_COLUMNS.MESSAGES),
         ]);
-        return { partners, bets, funds, withdrawals, messages };
+
+        // Si ALGUNA devolvió null (503), asumimos modo local total
+        if (results.some(r => r === null)) {
+            return null;
+        }
+
+        return { 
+            partners: results[0] as Partner[], 
+            bets: results[1] as Bet[], 
+            funds: results[2] as Fund[], 
+            withdrawals: results[3] as Withdrawal[], 
+            messages: results[4] as Message[] 
+        };
     },
 
     // 2. CREATE
@@ -69,7 +76,7 @@ export const sheetApi = {
     async saveWithdrawal(w: Withdrawal) { return createItem('Withdrawals', w, SHEET_COLUMNS.WITHDRAWALS); },
     async saveMessage(m: Message) { return createItem('Messages', m, SHEET_COLUMNS.MESSAGES); },
 
-    // 3. UPDATE (Requires ID to be in Column A)
+    // 3. UPDATE
     async updateBet(b: Bet) { return updateItem('Bets', b.betId, b, SHEET_COLUMNS.BETS); },
     async updateFund(f: Fund) { return updateItem('Funds', f.fundId, f, SHEET_COLUMNS.FUNDS); },
     async updateWithdrawal(w: Withdrawal) { return updateItem('Withdrawals', w.withdrawalId, w, SHEET_COLUMNS.WITHDRAWALS); },

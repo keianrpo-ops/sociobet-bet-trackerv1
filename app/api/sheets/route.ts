@@ -31,11 +31,11 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const tab = searchParams.get('tab');
 
-    // FIX: Graceful degradation. If credentials are missing, return empty array (Demo Mode)
-    // instead of crashing. This fixes "Error fetching..." logs on client.
+    // MODO SEGURO: Si faltan credenciales, avisar al frontend con 503
+    // para que NO sobrescriba los datos locales con un array vacío.
     if (!SPREADSHEET_ID || !CLIENT_EMAIL || !PRIVATE_KEY) {
-      console.warn(`[API] Missing credentials for ${tab}. Returning empty dataset.`);
-      return NextResponse.json([]);
+      console.warn(`[API] Faltan credenciales para ${tab}. Activando Modo Local.`);
+      return NextResponse.json({ error: 'Configuration Missing', mode: 'LOCAL_DEMO' }, { status: 503 });
     }
 
     if (!tab) return NextResponse.json({ error: 'Falta parámetro ?tab=' }, { status: 400 });
@@ -68,16 +68,17 @@ export async function GET(req: NextRequest) {
 
   } catch (error: any) {
     console.error('API GET Error:', error);
-    // Return empty array on error to prevent UI crash loops
-    return NextResponse.json([]); 
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
 // --- POST: Append Row ---
 export async function POST(req: NextRequest) {
   try {
+    // Si faltan credenciales, simular éxito para que el frontend no falle,
+    // pero no guardar nada en la nube.
     if (!SPREADSHEET_ID || !CLIENT_EMAIL || !PRIVATE_KEY) {
-        return NextResponse.json({ error: 'Server not configured' }, { status: 503 });
+        return NextResponse.json({ success: true, mode: 'LOCAL_DEMO_SAVED' });
     }
     
     const body = await req.json();
@@ -108,7 +109,7 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
     try {
         if (!SPREADSHEET_ID || !CLIENT_EMAIL || !PRIVATE_KEY) {
-            return NextResponse.json({ error: 'Server not configured' }, { status: 503 });
+            return NextResponse.json({ success: true, mode: 'LOCAL_DEMO_UPDATED' });
         }
 
         const body = await req.json();

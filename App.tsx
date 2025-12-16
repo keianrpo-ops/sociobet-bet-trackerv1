@@ -10,10 +10,11 @@ import { ContractModal } from './components/ContractModal';
 import { Funds } from './components/Funds'; 
 import { Messages } from './components/Messages';
 import { Toast } from './components/Toast'; 
+import { ProfileSettingsModal } from './components/ProfileSettingsModal';
 import { sheetApi } from './services/sheetApi'; 
 import { Bet, Partner, BetStatus, Message, Fund, Withdrawal } from './types';
 import { calculateBetOutcome, formatCurrency, calculateDashboardStats } from './utils/calculations';
-import { LayoutDashboard, List, DollarSign, LogOut, RefreshCw, UserCircle, Menu, X, Moon, Sun, Mail, Users, Key, Loader2, Database } from 'lucide-react';
+import { LayoutDashboard, List, DollarSign, LogOut, RefreshCw, UserCircle, Menu, X, Moon, Sun, Mail, Users, Key, Loader2, Database, WifiOff, Settings } from 'lucide-react';
 
 // --- Utils: LocalStorage (Cache para velocidad) ---
 const loadState = <T,>(key: string, fallback: T): T => {
@@ -48,7 +49,7 @@ const SidebarItem = ({ to, icon: Icon, label, onClick }: any) => (
   </NavLink>
 );
 
-const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isSyncing }: any) => {
+const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isSyncing, isDemoMode, onOpenProfile }: any) => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -92,21 +93,35 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
         </nav>
 
         <div className="p-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
-           <div className="flex items-center gap-3 p-3 bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl mb-3 shadow-sm">
+           <div className="flex items-center gap-3 p-3 bg-white dark:bg-slate-700/50 border border-slate-200 dark:border-slate-600 rounded-xl mb-3 shadow-sm relative group cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors" onClick={onOpenProfile}>
              <div className="bg-slate-100 dark:bg-slate-600 p-1 rounded-full">
                 <UserCircle className="w-8 h-8 text-slate-500 dark:text-slate-300" />
              </div>
-             <div className="overflow-hidden">
+             <div className="overflow-hidden flex-1">
                <p className="text-sm font-bold text-slate-800 dark:text-white truncate">{user.name}</p>
                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.role === 'ADMIN' ? 'Administrador' : 'Socio'}</p>
              </div>
+             <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Settings className="w-4 h-4 text-slate-400" />
+             </div>
            </div>
-           <button 
-             onClick={onLogout}
-             className="w-full flex items-center justify-center gap-2 text-rose-600 dark:text-rose-400 text-sm font-bold py-2.5 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors border border-transparent hover:border-rose-100 dark:hover:border-rose-800"
-           >
-             <LogOut className="w-4 h-4" /> Cerrar Sesión
-           </button>
+           
+           <div className="flex gap-2">
+                <button 
+                    onClick={onOpenProfile}
+                    className="flex-1 flex items-center justify-center gap-2 text-slate-600 dark:text-slate-300 text-xs font-bold py-2.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-600"
+                    title="Configuración de Perfil"
+                >
+                    <Settings className="w-4 h-4" /> Configurar
+                </button>
+                <button 
+                    onClick={onLogout}
+                    className="flex-1 flex items-center justify-center gap-2 text-rose-600 dark:text-rose-400 text-xs font-bold py-2.5 hover:bg-rose-50 dark:hover:bg-rose-900/20 rounded-lg transition-colors border border-transparent hover:border-rose-100 dark:hover:border-rose-800"
+                    title="Cerrar Sesión"
+                >
+                    <LogOut className="w-4 h-4" /> Salir
+                </button>
+           </div>
         </div>
       </aside>
 
@@ -122,6 +137,14 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
           </button>
           
           <div className="ml-auto flex items-center gap-4">
+             {/* Local Mode Badge */}
+             {isDemoMode && (
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-full">
+                    <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                    <span className="text-xs font-bold text-amber-700 dark:text-amber-300">Modo Local (Datos en navegador)</span>
+                </div>
+             )}
+
              {/* Dark Mode Toggle */}
              <button 
                 onClick={toggleTheme}
@@ -134,10 +157,14 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
              <button 
               onClick={onSync}
               disabled={isSyncing}
-              className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-sm font-bold hover:bg-slate-50 dark:hover:bg-slate-600 transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed"
+              className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-bold transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed
+                ${isDemoMode 
+                    ? 'bg-amber-100 border-amber-200 text-amber-800 dark:bg-amber-900 dark:border-amber-800 dark:text-amber-100 hover:bg-amber-200' 
+                    : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600'
+                }`}
              >
                <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} /> 
-               <span className="hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Sincronizar'}</span>
+               <span className="hidden sm:inline">{isSyncing ? 'Conectando...' : (isDemoMode ? 'Reconectar' : 'Sincronizar')}</span>
              </button>
           </div>
         </header>
@@ -150,7 +177,7 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
                        <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
                        <div>
                            <h4 className="font-bold text-slate-800 dark:text-white">Conectando con Google Sheets...</h4>
-                           <p className="text-xs text-slate-500">Obteniendo datos en tiempo real</p>
+                           <p className="text-xs text-slate-500">Verificando configuración de nube</p>
                        </div>
                    </div>
                </div>
@@ -177,6 +204,7 @@ const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [user, setUser] = useState({ name: '', role: 'ADMIN', partnerId: '' });
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false); // New State for Safety
   
   // Login Inputs
   const [loginUsername, setLoginUsername] = useState('');
@@ -186,6 +214,7 @@ const App: React.FC = () => {
   // Modals
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [betToEdit, setBetToEdit] = useState<Bet | null>(null);
   
   const [toast, setToast] = useState<{message: string, sender: string} | null>(null);
@@ -203,25 +232,36 @@ const App: React.FC = () => {
   const performSync = async () => {
       setIsSyncing(true);
       try {
-          // LLAMADA A LA API REAL
           const data = await sheetApi.syncAll();
           
-          setPartners(data.partners);
-          setBets(data.bets);
-          setFunds(data.funds);
-          setWithdrawals(data.withdrawals);
-          setMessages(data.messages);
+          if (data === null) {
+              // DETECTADO ERROR 503: Faltan credenciales.
+              setIsDemoMode(true);
+              if (isAuthenticated) {
+                 setToast({ message: "Modo Local: Tus datos se guardan en este navegador.", sender: "Sin Conexión a Nube" });
+              }
+          } else {
+              // Éxito: Tenemos datos de la nube, actualizamos local
+              setPartners(data.partners);
+              setBets(data.bets);
+              setFunds(data.funds);
+              setWithdrawals(data.withdrawals);
+              setMessages(data.messages);
 
-          // Actualizar Caché Local
-          saveState('sb_partners', data.partners);
-          saveState('sb_bets', data.bets);
-          saveState('sb_funds', data.funds);
-          saveState('sb_withdrawals', data.withdrawals);
-          saveState('sb_messages', data.messages);
+              // Actualizar Caché Local
+              saveState('sb_partners', data.partners);
+              saveState('sb_bets', data.bets);
+              saveState('sb_funds', data.funds);
+              saveState('sb_withdrawals', data.withdrawals);
+              saveState('sb_messages', data.messages);
+              
+              setIsDemoMode(false);
+          }
 
       } catch (error) {
           console.error("Error crítico de sincronización:", error);
-          setToast({ message: "No se pudo conectar con Google Sheets. Usando datos locales.", sender: "Error de Sistema" });
+          setToast({ message: "Error de red. Usando datos locales.", sender: "Sistema" });
+          setIsDemoMode(true);
       } finally {
           setIsSyncing(false);
       }
@@ -231,6 +271,13 @@ const App: React.FC = () => {
   useEffect(() => {
       performSync();
   }, []);
+  
+  // Guardar en localStorage cada vez que cambia algo (Para modo local robusto)
+  useEffect(() => { saveState('sb_partners', partners); }, [partners]);
+  useEffect(() => { saveState('sb_bets', bets); }, [bets]);
+  useEffect(() => { saveState('sb_funds', funds); }, [funds]);
+  useEffect(() => { saveState('sb_withdrawals', withdrawals); }, [withdrawals]);
+  useEffect(() => { saveState('sb_messages', messages); }, [messages]);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -245,15 +292,40 @@ const App: React.FC = () => {
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
   // --- LOGIN ---
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoginError('');
 
-    // Fallback: Si la hoja está vacía, permitir entrar como Admin hardcoded para configurar
-    // Esto es crucial para la primera vez
+    // Fallback: Si la hoja está vacía (o modo local inicial), permitir entrar como Admin
     if (partners.length === 0 && loginUsername === 'admin' && loginPassword === '123') {
-         setUser({ name: 'Admin (Modo Rescate)', role: 'ADMIN', partnerId: 'P001' });
+         // Crear el perfil Admin
+         const adminProfile: Partner = { 
+            partnerId: 'P001', 
+            name: 'Admin Usuario', 
+            status: 'ACTIVE', 
+            partnerProfitPct: 100, 
+            username: 'admin', 
+            password: '123',
+            email: 'admin@sociobet.com',
+            joinedDate: new Date().toISOString().split('T')[0],
+            contractAccepted: true 
+         };
+         
+         // Actualizar Estado Local
+         setPartners([adminProfile]);
+         setUser({ name: 'Admin', role: 'ADMIN', partnerId: 'P001' });
+         setSelectedPartner('ALL');
          setIsAuthenticated(true);
+
+         // AUTO-INICIALIZAR NUBE (Importante para que la próxima vez cargue del Excel)
+         if (!isDemoMode) {
+             try {
+                await sheetApi.savePartner(adminProfile);
+                setToast({ message: "Base de datos inicializada con usuario Admin.", sender: "SocioBet Cloud" });
+             } catch(err) {
+                console.error("Error autoinicializando admin", err);
+             }
+         }
          return;
     }
 
@@ -277,10 +349,14 @@ const App: React.FC = () => {
   const handleCreatePartner = async (newPartner: Partner) => {
       const exists = partners.find(p => p.partnerId === newPartner.partnerId);
       
-      // Update Local State Optimistically
       if (exists) {
           setPartners(prev => prev.map(p => p.partnerId === newPartner.partnerId ? newPartner : p));
           await sheetApi.updatePartner(newPartner);
+          
+          // Si me actualicé a mí mismo, actualizar estado de usuario
+          if (user.partnerId === newPartner.partnerId) {
+             setUser(prev => ({ ...prev, name: newPartner.name }));
+          }
       } else {
           setPartners(prev => [...prev, newPartner]);
           await sheetApi.savePartner(newPartner);
@@ -307,7 +383,6 @@ const App: React.FC = () => {
     let newBetObj: Bet | null = null;
 
     if (betToEdit) {
-        // UPDATE LOCAL
         const updatedBets = bets.map(b => {
             if (b.betId === betToEdit.betId) {
                 const partner = partners.find(p => p.partnerId === betData.partnerId);
@@ -327,13 +402,9 @@ const App: React.FC = () => {
             return b;
         });
         setBets(updatedBets);
-        
-        // UPDATE REMOTE
         if (newBetObj) await sheetApi.updateBet(newBetObj);
-        
         setBetToEdit(null);
     } else {
-        // CREATE LOCAL
         const newBet: Bet = {
           ...betData,
           betId: `B-${Date.now()}`,
@@ -341,25 +412,7 @@ const App: React.FC = () => {
           status: 'PENDING'
         };
         setBets([newBet, ...bets]);
-        
-        // CREATE REMOTE
         await sheetApi.saveBet(newBet);
-
-        // Notify
-        if (user.role === 'ADMIN' && betData.partnerId) {
-             const msg: Message = {
-                messageId: `SYS-${Date.now()}`,
-                date: new Date().toISOString().split('T')[0],
-                partnerId: betData.partnerId,
-                senderName: 'SocioBet (Sistema)',
-                subject: 'Nueva Inversión Registrada',
-                message: `Se ha registrado una nueva apuesta: ${betData.homeTeam} vs ${betData.awayTeam}`,
-                status: 'UNREAD',
-                isFromAdmin: true
-            };
-            setMessages(prev => [...prev, msg]);
-            await sheetApi.saveMessage(msg);
-        }
     }
     setIsModalOpen(false);
   };
@@ -423,8 +476,8 @@ const App: React.FC = () => {
   };
 
   const handleDeleteFund = (fundId: string) => {
-      // API DELETE no implementado en esta versión simple, solo local visual
       setFunds(funds.filter(f => f.fundId !== fundId));
+      // NOTE: Deletion is not fully implemented in Cloud API to avoid data loss, just local for now or soft delete.
   };
 
   // --- MESSAGES ---
@@ -509,11 +562,8 @@ const App: React.FC = () => {
                     <Database className="w-3 h-3" /> Base de datos vacía
                  </p>
                  <p className="text-[10px] text-amber-600 dark:text-amber-500 mb-2">
-                     Si es tu primera vez, ingresa como <b>admin / 123</b> para configurar tu primer socio.
+                     Ingresa como <b>admin / 123</b> para inicializar la nube.
                  </p>
-                 <button onClick={performSync} className="text-xs text-blue-600 hover:underline flex items-center justify-center gap-1 w-full font-bold">
-                    <RefreshCw className="w-3 h-3" /> Reintentar Conexión
-                 </button>
              </div>
           )}
         </div>
@@ -547,6 +597,8 @@ const App: React.FC = () => {
         isDarkMode={isDarkMode}
         toggleTheme={toggleTheme}
         isSyncing={isSyncing}
+        isDemoMode={isDemoMode}
+        onOpenProfile={() => setIsProfileOpen(true)}
       >
         {toast && <Toast message={toast.message} sender={toast.sender} onClose={() => setToast(null)} />}
         
@@ -567,6 +619,16 @@ const App: React.FC = () => {
                 onClose={() => setIsBulkImportOpen(false)}
                 onImport={handleBulkImport}
                 partners={visiblePartners}
+            />
+        )}
+
+        {/* MODAL PERFIL - SEGURO */}
+        {isProfileOpen && currentPartner && (
+            <ProfileSettingsModal 
+                isOpen={isProfileOpen}
+                onClose={() => setIsProfileOpen(false)}
+                currentUser={currentPartner}
+                onUpdateProfile={handleCreatePartner}
             />
         )}
 
