@@ -32,7 +32,6 @@ export async function GET(req: NextRequest) {
     const tab = searchParams.get('tab');
 
     // MODO SEGURO: Si faltan credenciales, avisar al frontend con 503
-    // para que NO sobrescriba los datos locales con un array vacío.
     if (!SPREADSHEET_ID || !CLIENT_EMAIL || !PRIVATE_KEY) {
       console.warn(`[API] Faltan credenciales para ${tab}. Activando Modo Local.`);
       return NextResponse.json({ error: 'Configuration Missing', mode: 'LOCAL_DEMO' }, { status: 503 });
@@ -75,8 +74,6 @@ export async function GET(req: NextRequest) {
 // --- POST: Append Row ---
 export async function POST(req: NextRequest) {
   try {
-    // Si faltan credenciales, simular éxito para que el frontend no falle,
-    // pero no guardar nada en la nube.
     if (!SPREADSHEET_ID || !CLIENT_EMAIL || !PRIVATE_KEY) {
         return NextResponse.json({ success: true, mode: 'LOCAL_DEMO_SAVED' });
     }
@@ -122,6 +119,7 @@ export async function PUT(req: NextRequest) {
         const sheets = await getSheets();
         if (!sheets) return NextResponse.json({ error: 'Auth failed' }, { status: 500 });
 
+        // 1. Encontrar la fila
         const colARes = await sheets.spreadsheets.values.get({
             spreadsheetId: SPREADSHEET_ID,
             range: `${tab}!A:A`,
@@ -135,6 +133,7 @@ export async function PUT(req: NextRequest) {
 
         const sheetRowNumber = rowIndex + 1;
 
+        // 2. Actualizar
         const response = await sheets.spreadsheets.values.update({
             spreadsheetId: SPREADSHEET_ID,
             range: `${tab}!A${sheetRowNumber}`,
@@ -148,4 +147,72 @@ export async function PUT(req: NextRequest) {
         console.error('API PUT Error:', error);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
+}
+
+// --- DELETE: Remove Row by ID ---
+export async function DELETE(req: NextRequest) {
+  try {
+      if (!SPREADSHEET_ID || !CLIENT_EMAIL || !PRIVATE_KEY) {
+          return NextResponse.json({ success: true, mode: 'LOCAL_DEMO_DELETED' });
+      }
+
+      const body = await req.json();
+      const { tab, id } = body;
+
+      if (!tab || !id) {
+          return NextResponse.json({ error: 'Invalid body, needs tab and id' }, { status: 400 });
+      }
+
+      const sheets = await getSheets();
+      if (!sheets) return NextResponse.json({ error: 'Auth failed' }, { status: 500 });
+
+      // 1. Obtener metadata para saber el "sheetId" (entero) a partir del nombre "tab" (string)
+      const meta = await sheets.spreadsheets.get({
+          spreadsheetId: SPREADSHEET_ID
+      });
+
+      const sheetObj = meta.data.sheets?.find(s => s.properties?.title === tab);
+      if (!sheetObj || typeof sheetObj.properties?.sheetId === 'undefined') {
+          return NextResponse.json({ error: 'Tab not found in sheet metadata' }, { status: 404 });
+      }
+      const sheetId = sheetObj.properties.sheetId;
+
+      // 2. Encontrar en qué fila está el ID
+      const colARes = await sheets.spreadsheets.values.get({
+          spreadsheetId: SPREADSHEET_ID,
+          range: `${tab}!A:A`,
+      });
+
+      const rows = colARes.data.values;
+      if (!rows) return NextResponse.json({ error: 'Sheet empty' }, { status: 404 });
+
+      const rowIndex = rows.findIndex(row => row[0] == id);
+      if (rowIndex === -1) return NextResponse.json({ error: 'ID not found' }, { status: 404 });
+
+      // 3. Borrar la fila usando batchUpdate -> deleteDimension
+      // rowIndex es 0-based. deleteDimension range es [startIndex, endIndex)
+      const request = {
+          deleteDimension: {
+              range: {
+                  sheetId: sheetId,
+                  dimension: 'ROWS',
+                  startIndex: rowIndex,
+                  endIndex: rowIndex + 1
+              }
+          }
+      };
+
+      await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: {
+              requests: [request]
+          }
+      });
+
+      return NextResponse.json({ success: true });
+
+  } catch (error: any) {
+      console.error('API DELETE Error:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 }

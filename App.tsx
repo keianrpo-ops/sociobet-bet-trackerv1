@@ -32,7 +32,6 @@ const saveState = (key: string, value: any) => {
 };
 
 // --- SAFE ICON COMPONENT (ESCUDO PROTECTOR) ---
-// Este componente evita que la app se rompa si un icono falla al cargar.
 const SafeIcon = ({ icon, className }: { icon: any, className?: string }) => {
     const IconComponent = icon || AlertCircle; 
     return <IconComponent className={className} />;
@@ -307,6 +306,26 @@ const App: React.FC = () => {
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
+  // --- NOTIFICACIONES AUTOMÁTICAS (ROBOT) ---
+  const sendSystemNotification = async (partnerId: string, subject: string, text: string) => {
+      // No notificar a la nada o al admin a sí mismo (si el ID es P001 o vacío)
+      if (!partnerId || partnerId === 'P001') return;
+
+      const newMessage: Message = {
+          messageId: `M-SYS-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          date: new Date().toISOString().split('T')[0],
+          partnerId: partnerId,
+          senderName: 'Fennix System', // Nombre Robótico
+          subject: subject,
+          message: text,
+          status: 'UNREAD',
+          isFromAdmin: true
+      };
+      
+      setMessages(prev => [...prev, newMessage]);
+      await sheetApi.saveMessage(newMessage);
+  };
+
   // --- LOGIN ---
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -336,7 +355,6 @@ const App: React.FC = () => {
          setSelectedPartner('ALL');
          setIsAuthenticated(true);
 
-         // AUTO-INICIALIZAR NUBE (Importante para que la próxima vez cargue del Excel)
          if (!isDemoMode) {
              try {
                 const res: any = await sheetApi.savePartner(adminProfile);
@@ -384,17 +402,15 @@ const App: React.FC = () => {
   const handleCreatePartner = async (newPartner: Partner) => {
       const exists = partners.find(p => p.partnerId === newPartner.partnerId);
       
-      // 1. Actualización Optimista (Visualmente inmediato)
       if (exists) {
           setPartners(prev => prev.map(p => p.partnerId === newPartner.partnerId ? newPartner : p));
           if (user.partnerId === newPartner.partnerId) {
              setUser(prev => ({ ...prev, name: newPartner.name }));
           }
-          // Llamada API
           sheetApi.updatePartner(newPartner).then((res: any) => {
                if (res?.mode?.includes('DEMO')) {
                     setIsDemoMode(true);
-                    setToast({ message: "Cambio guardado LOCALMENTE. No se sincronizó con Sheets.", sender: "⚠️ Modo Offline" });
+                    setToast({ message: "Cambio guardado LOCALMENTE.", sender: "⚠️ Modo Offline" });
                }
           }).catch(() => {
               setToast({ message: "Error de red. Cambio solo local.", sender: "Error" });
@@ -402,18 +418,16 @@ const App: React.FC = () => {
           });
       } else {
           setPartners(prev => [...prev, newPartner]);
-          // Llamada API
           try {
              const res: any = await sheetApi.savePartner(newPartner);
              if (res?.mode?.includes('DEMO')) {
                  setIsDemoMode(true);
-                 setToast({ message: "Socio creado LOCALMENTE. Configura Vercel para guardar en la nube.", sender: "⚠️ Modo Offline" });
+                 setToast({ message: "Socio creado LOCALMENTE.", sender: "⚠️ Modo Offline" });
              } else {
                  setToast({ message: "Socio guardado en Google Sheets correctamente.", sender: "Nube" });
              }
           } catch(e) {
               console.error("Error guardando socio", e);
-              setToast({ message: "Error crítico guardando en nube.", sender: "Error" });
               setIsDemoMode(true);
           }
       }
@@ -460,6 +474,14 @@ const App: React.FC = () => {
         });
         setBets(updatedBets);
         if (newBetObj) await sheetApi.updateBet(newBetObj);
+        
+        // NOTIFICACIÓN AUTOMÁTICA: EDICIÓN (TRANSPARENCIA)
+        await sendSystemNotification(
+            betData.partnerId,
+            "✏️ Apuesta Modificada",
+            `El administrador ha realizado una corrección en la apuesta del evento ${betData.homeTeam} vs ${betData.awayTeam}. Por favor revisa los detalles actualizados en tu historial.`
+        );
+
         setBetToEdit(null);
     } else {
         isNew = true;
@@ -472,6 +494,13 @@ const App: React.FC = () => {
         newBetObj = newBet;
         setBets([newBet, ...bets]);
         await sheetApi.saveBet(newBet);
+        
+        // NOTIFICACIÓN AUTOMÁTICA: NUEVA APUESTA
+        await sendSystemNotification(
+            newBet.partnerId,
+            "🎲 Nueva Apuesta Registrada",
+            `Se ha puesto en juego una nueva apuesta:\n\nEvento: ${newBet.homeTeam} vs ${newBet.awayTeam}\nMercado: ${newBet.marketDescription}\nInversión: ${formatCurrency(newBet.stakeCOP)}\n\nPuedes ver los detalles en tu historial.`
+        );
     }
     setIsModalOpen(false);
     if(newBetObj) setToast({ message: isNew ? "Apuesta registrada" : "Apuesta actualizada", sender: "Sistema" });
@@ -487,7 +516,7 @@ const App: React.FC = () => {
              const outcome = calculateBetOutcome(updatedBet, partner?.partnerProfitPct || 50);
              const resolvedBet = { 
                  ...updatedBet, 
-                 finalReturnCOP: outcome.finalReturn,
+                 finalReturnCOP: outcome.finalReturn, 
                  profitGrossCOP: outcome.profitGross,
                  profitPartnerCOP: outcome.profitPartner,
                  profitAdminCOP: outcome.profitAdmin
@@ -502,6 +531,31 @@ const App: React.FC = () => {
       
       if (targetBet) {
           await sheetApi.updateBet(targetBet);
+
+          // NOTIFICACIÓN AUTOMÁTICA: APUESTA RESUELTA
+          let subject = "";
+          let body = "";
+          
+          if (newStatus === 'WON') {
+              subject = "✅ Apuesta Ganada";
+              body = `¡Buenas noticias! La apuesta del evento ${targetBet.homeTeam} vs ${targetBet.awayTeam} ha sido GANADA.\n\nRetorno Total: ${formatCurrency(targetBet.finalReturnCOP || 0)}\nTu Ganancia Neta: ${formatCurrency(targetBet.profitPartnerCOP || 0)}`;
+          } else if (newStatus === 'LOST') {
+              subject = "❌ Apuesta Perdida";
+              body = `La apuesta del evento ${targetBet.homeTeam} vs ${targetBet.awayTeam} ha resultado perdida. El sistema continuará operando para recuperar el capital según la estrategia.`;
+          } else if (newStatus === 'CASHED_OUT') {
+              subject = "💰 Cash Out Confirmado";
+              body = `Se ha realizado un cierre anticipado (Cash Out) en el evento ${targetBet.homeTeam} vs ${targetBet.awayTeam}.\n\nValor Recuperado: ${formatCurrency(targetBet.finalReturnCOP || 0)}`;
+          } else if (newStatus === 'VOID') {
+              subject = "⚠️ Apuesta Anulada (Void)";
+              body = `La apuesta del evento ${targetBet.homeTeam} vs ${targetBet.awayTeam} ha sido anulada. El dinero invertido ha retornado a tu saldo sin ganancias ni pérdidas.`;
+          } else if (newStatus === 'PENDING') {
+              subject = "🔄 Apuesta Revertida";
+              body = `La apuesta del evento ${targetBet.homeTeam} vs ${targetBet.awayTeam} ha vuelto al estado PENDIENTE por una corrección administrativa.`;
+          }
+
+          if (subject && targetBet.partnerId) {
+              await sendSystemNotification(targetBet.partnerId, subject, body);
+          }
       }
   };
 
@@ -514,10 +568,24 @@ const App: React.FC = () => {
      
      setBets([...newBets, ...bets]);
      
-     // Guardar en lotes para no saturar
+     // Guardar en lotes
      for (const b of newBets) {
          await sheetApi.saveBet(b);
      }
+     
+     // Notificar al socio sobre la carga masiva (solo 1 mensaje, no 1 por apuesta)
+     if (newBets.length > 0) {
+         const distinctPartners = [...new Set(newBets.map(b => b.partnerId))];
+         for (const pid of distinctPartners) {
+             const count = newBets.filter(b => b.partnerId === pid).length;
+             await sendSystemNotification(
+                 pid,
+                 "📥 Carga Masiva de Apuestas",
+                 `Se han importado exitosamente ${count} nuevas operaciones a tu portafolio. Revisa el historial para más detalles.`
+             );
+         }
+     }
+
      setToast({ message: `${newBets.length} apuestas importadas correctamente.`, sender: "Importador" });
   };
 
@@ -526,21 +594,71 @@ const App: React.FC = () => {
       setFunds(prev => [newFund, ...prev]);
       await sheetApi.saveFund(newFund);
       setToast({ message: "Depósito registrado", sender: "Caja" });
+
+      // NOTIFICACIÓN AUTOMÁTICA: DEPÓSITO
+      await sendSystemNotification(
+          newFund.partnerId || '',
+          "💰 Confirmación de Depósito",
+          `Hemos recibido exitosamente un depósito por valor de ${formatCurrency(newFund.amountCOP)}.\n\nDetalle: ${newFund.description}\nMétodo: ${newFund.method}\n\nEste capital ya está disponible en tu balance.`
+      );
   };
 
   const handleUpdateWithdrawal = async (updatedWithdrawal: Withdrawal) => {
       setWithdrawals(prev => prev.map(w => w.withdrawalId === updatedWithdrawal.withdrawalId ? updatedWithdrawal : w));
       await sheetApi.updateWithdrawal(updatedWithdrawal);
+
+      // NOTIFICACIÓN AUTOMÁTICA: RETIRO ACTUALIZADO
+      if (updatedWithdrawal.status === 'APPROVED' || updatedWithdrawal.status === 'PAID' || updatedWithdrawal.status === 'REJECTED') {
+          let statusText = updatedWithdrawal.status === 'PAID' ? 'PAGADO Y COMPLETADO' : (updatedWithdrawal.status === 'APPROVED' ? 'APROBADO (En proceso de pago)' : 'RECHAZADO');
+          
+          let body = `El estado de tu solicitud de retiro por ${formatCurrency(updatedWithdrawal.amountCOP)} ha cambiado a: ${statusText}.`;
+          if (updatedWithdrawal.status === 'PAID') body += "\n\nPor favor verifica tu cuenta bancaria. Si adjuntamos comprobante, puedes verlo en la sección de Fondos.";
+          
+          await sendSystemNotification(
+              updatedWithdrawal.partnerId,
+              "🏦 Actualización de Retiro",
+              body
+          );
+      }
   };
 
   const handleUpdateFund = async (updatedFund: Fund) => {
       setFunds(prev => prev.map(f => f.fundId === updatedFund.fundId ? updatedFund : f));
       await sheetApi.updateFund(updatedFund);
+
+      // NOTIFICACIÓN AUTOMÁTICA: EDICIÓN DE FONDO
+      await sendSystemNotification(
+          updatedFund.partnerId || '',
+          "✏️ Movimiento de Caja Actualizado",
+          `Se ha modificado la información de un registro de fondos (Depósito/Ajuste).\n\nDescripción: ${updatedFund.description}\nNuevo Valor: ${formatCurrency(updatedFund.amountCOP)}\n\nSi no reconoces este cambio, contacta al administrador.`
+      );
   };
 
-  const handleDeleteFund = (fundId: string) => {
-      setFunds(funds.filter(f => f.fundId !== fundId));
-      // NOTE: Deletion is not fully implemented in Cloud API to avoid data loss, just local for now or soft delete.
+  const handleDeleteFund = async (fundId: string) => {
+      // 1. Obtener datos antes de borrar para notificar
+      const fundToDelete = funds.find(f => f.fundId === fundId);
+      
+      // 2. Borrado Optimista (Local)
+      setFunds(prev => prev.filter(f => f.fundId !== fundId));
+      
+      // 3. Borrado Real (Nube)
+      try {
+          await sheetApi.deleteFund(fundId);
+          setToast({ message: "Registro eliminado de la nube.", sender: "Sistema" });
+          
+          // NOTIFICACIÓN AUTOMÁTICA: BORRADO DE FONDO (TRANSPARENCIA)
+          if (fundToDelete && fundToDelete.partnerId) {
+             await sendSystemNotification(
+                 fundToDelete.partnerId,
+                 "🗑️ Registro de Fondos Eliminado",
+                 `El administrador ha eliminado un registro de tu historial de fondos.\n\nDetalle: ${fundToDelete.description}\nValor Eliminado: ${formatCurrency(fundToDelete.amountCOP)}\n\nEsta acción afecta tu balance actual.`
+             );
+          }
+
+      } catch (error) {
+          console.error("Error borrando de la nube:", error);
+          setToast({ message: "Error borrando de la nube. Al sincronizar podría volver.", sender: "Error" });
+      }
   };
 
   // --- MESSAGES ---

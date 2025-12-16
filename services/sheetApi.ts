@@ -41,6 +41,15 @@ async function updateItem(tabName: string, id: string, item: any, columns: strin
     return res.json();
 }
 
+async function deleteItem(tabName: string, id: string) {
+    const res = await fetch(API_URL, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tab: tabName, id })
+    });
+    return res.json();
+}
+
 // --- PUBLIC METHODS ---
 
 export const sheetApi = {
@@ -81,5 +90,8 @@ export const sheetApi = {
     async updateFund(f: Fund) { return updateItem('Funds', f.fundId, f, SHEET_COLUMNS.FUNDS); },
     async updateWithdrawal(w: Withdrawal) { return updateItem('Withdrawals', w.withdrawalId, w, SHEET_COLUMNS.WITHDRAWALS); },
     async updatePartner(p: Partner) { return updateItem('Partners', p.partnerId, p, SHEET_COLUMNS.PARTNERS); },
-    async updateMessage(m: Message) { return updateItem('Messages', m.messageId, m, SHEET_COLUMNS.MESSAGES); }
+    async updateMessage(m: Message) { return updateItem('Messages', m.messageId, m, SHEET_COLUMNS.MESSAGES); },
+
+    // 4. DELETE
+    async deleteFund(fundId: string) { return deleteItem('Funds', fundId); }
 };
