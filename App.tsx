@@ -216,8 +216,6 @@ const App: React.FC = () => {
   const [partners, setPartners] = useState<Partner[]>(() => loadState('sb_partners', []));
 
   // --- SOLUCIÓN TÉCNICA #1: LAZY INITIALIZATION ---
-  // Inicializamos el estado leyendo DIRECTAMENTE la sesión. 
-  // Esto evita que se borre al recargar antes de ser leída.
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
       const session = loadState<{isAuthenticated: boolean}>('sb_session', { isAuthenticated: false });
       return session?.isAuthenticated || false;
@@ -258,7 +256,7 @@ const App: React.FC = () => {
     return false;
   });
 
-  // Solo GUARDAMOS sesión, ya no la cargamos con useEffect (se cargó al inicio)
+  // Solo GUARDAMOS sesión
   useEffect(() => {
       if (isAuthenticated) {
           saveState('sb_session', { user, isAuthenticated, selectedPartner });
@@ -325,7 +323,7 @@ const App: React.FC = () => {
 
   const toggleTheme = () => setIsDarkMode(!isDarkMode);
 
-  // --- NOTIFICACIONES AUTOMÁTICAS ---
+  // --- NOTIFICACIONES AUTOMÁTICAS (ROBOT MEJORADO) ---
   const sendSystemNotification = async (partnerId: string, subject: string, text: string) => {
       if (!partnerId || partnerId === 'P001') return;
 
@@ -342,6 +340,7 @@ const App: React.FC = () => {
       
       setMessages(prev => [...prev, newMessage]);
       await sheetApi.saveMessage(newMessage);
+      setToast({ message: "📩 Notificación enviada al socio", sender: "Sistema" });
   };
 
   // --- LOGIN ---
@@ -439,24 +438,20 @@ const App: React.FC = () => {
       }
   };
 
+  // --- SAVE BET (NEW/EDIT) ---
   const handleSaveBet = async (betData: any) => {
     let newBetObj: Bet | null = null;
     let isNew = false;
 
     if (betToEdit) {
+        // EDICIÓN
         const updatedBets = bets.map(b => {
             if (b.betId === betToEdit.betId) {
                 const partner = partners.find(p => p.partnerId === betData.partnerId);
                 const updatedBase = { ...b, ...betData }; 
                 const outcome = calculateBetOutcome(updatedBase, partner?.partnerProfitPct || 50);
                 
-                const final = { 
-                    ...updatedBase, 
-                    finalReturnCOP: outcome.finalReturn,
-                    profitGrossCOP: outcome.profitGross,
-                    profitPartnerCOP: outcome.profitPartner,
-                    profitAdminCOP: outcome.profitAdmin
-                };
+                const final = { ...updatedBase, ...outcome };
                 newBetObj = final;
                 return final;
             }
@@ -468,40 +463,38 @@ const App: React.FC = () => {
         await sendSystemNotification(
             betData.partnerId,
             "✏️ Apuesta Modificada",
-            `El administrador ha realizado una corrección en la apuesta.`
+            `⚠️ **ACTUALIZACIÓN ADMINISTRATIVA**\n\nEl administrador ha realizado una corrección en los detalles de la apuesta:\n\n⚽ **Evento:** ${betData.homeTeam} vs ${betData.awayTeam}\n📝 **Nota:** Por favor verifica los datos actualizados en tu historial.`
         );
 
         setBetToEdit(null);
     } else {
+        // NUEVA
         isNew = true;
         const newBet: Bet = {
           ...betData,
           betId: `B-${Date.now()}`,
-          expectedReturnCOP: betData.stakeCOP * betData.oddsDecimal,
+          expectedReturnCOP: Number(betData.stakeCOP) * Number(betData.oddsDecimal),
           status: 'PENDING'
         };
         newBetObj = newBet;
         setBets([newBet, ...bets]);
         await sheetApi.saveBet(newBet);
         
+        // TICKET DETALLADO NUEVA APUESTA
         await sendSystemNotification(
             newBet.partnerId,
-            "🎲 Nueva Apuesta Registrada",
-            `Evento: ${newBet.homeTeam} vs ${newBet.awayTeam}`
+            "🎲 Nueva Inversión",
+            `🔔 **NUEVA APUESTA REGISTRADA**\n--------------------------------\n⚽ **Evento:** ${newBet.homeTeam} vs ${newBet.awayTeam}\n🎯 **Mercado:** ${newBet.marketDescription}\n\n📥 **Inversión (Stake):** ${formatCurrency(newBet.stakeCOP)}\n📊 **Cuota:** ${newBet.oddsDecimal}\n🏆 **Retorno Potencial:** ${formatCurrency(newBet.expectedReturnCOP)}\n\n*La operación ya se encuentra activa en tu portafolio.*`
         );
     }
     setIsModalOpen(false);
     if(newBetObj) setToast({ message: isNew ? "Apuesta registrada" : "Apuesta actualizada", sender: "Sistema" });
   };
 
+  // --- UPDATE STATUS (RESULTADOS) ---
   const handleUpdateBetStatus = async (betId: string, newStatus: BetStatus, cashoutVal?: number) => {
-      // SOLUCIÓN TÉCNICA #2: Validación previa
       const currentBet = bets.find(b => b.betId === betId);
-      if (!currentBet) {
-          console.error("Bet ID not found:", betId);
-          setToast({ message: "Error crítico: ID no encontrado. Recarga la página.", sender: "Sistema" });
-          return;
-      }
+      if (!currentBet) return;
 
       let targetBet: Bet | undefined;
 
@@ -509,13 +502,16 @@ const App: React.FC = () => {
           if (bet.betId === betId) {
              const updatedBet = { ...bet, status: newStatus, cashoutReturnCOP: cashoutVal };
              const partner = partners.find(p => p.partnerId === bet.partnerId);
-             const outcome = calculateBetOutcome(updatedBet, partner?.partnerProfitPct || 50);
+             const profitShare = partner?.partnerProfitPct || 50;
+             const outcome = calculateBetOutcome(updatedBet, profitShare);
+             
+             // FORZAR NUMEROS para el mensaje
              const resolvedBet = { 
                  ...updatedBet, 
-                 finalReturnCOP: outcome.finalReturn, 
-                 profitGrossCOP: outcome.profitGross,
-                 profitPartnerCOP: outcome.profitPartner,
-                 profitAdminCOP: outcome.profitAdmin
+                 finalReturnCOP: Number(outcome.finalReturn), 
+                 profitGrossCOP: Number(outcome.profitGross),
+                 profitPartnerCOP: Number(outcome.profitPartner),
+                 profitAdminCOP: Number(outcome.profitAdmin)
              };
              targetBet = resolvedBet;
              return resolvedBet;
@@ -525,12 +521,41 @@ const App: React.FC = () => {
       
       setBets(updatedBets);
       
-      if (targetBet) {
+      if (targetBet && targetBet.partnerId) {
           try {
               await sheetApi.updateBet(targetBet);
-              if (targetBet.partnerId) {
-                  await sendSystemNotification(targetBet.partnerId, "Actualización de Apuesta", `El estado de tu apuesta ha cambiado a ${newStatus}.`);
+              
+              const partner = partners.find(p => p.partnerId === targetBet!.partnerId);
+              const sharePct = partner?.partnerProfitPct || 50;
+              
+              // MENSAJES DETALLADOS POR ESTADO
+              if (newStatus === 'WON') {
+                  await sendSystemNotification(
+                      targetBet.partnerId,
+                      "✅ ¡Victoria! Apuesta Ganada",
+                      `🎉 **OPERACIÓN EXITOSA**\n--------------------------------\n⚽ **Evento:** ${targetBet.homeTeam} vs ${targetBet.awayTeam}\n🎯 **Mercado:** ${targetBet.marketDescription}\n\n📥 **Inversión:** ${formatCurrency(targetBet.stakeCOP)}\n📤 **Retorno Total:** ${formatCurrency(targetBet.finalReturnCOP || 0)}\n\n📈 **Ganancia Bruta:** ${formatCurrency(targetBet.profitGrossCOP || 0)}\n🤝 **Tu Utilidad Neta (${sharePct}%):** ${formatCurrency(targetBet.profitPartnerCOP || 0)}\n\n*El saldo ha sido acreditado a tu cuenta.*`
+                  );
+              } else if (newStatus === 'LOST') {
+                  await sendSystemNotification(
+                      targetBet.partnerId,
+                      "❌ Resultado Negativo",
+                      `📉 **OPERACIÓN CERRADA EN PÉRDIDA**\n--------------------------------\n⚽ **Evento:** ${targetBet.homeTeam} vs ${targetBet.awayTeam}\n\n📥 **Inversión:** ${formatCurrency(targetBet.stakeCOP)}\n📤 **Retorno:** $ 0\n\n*El sistema continuará operando para recuperar el capital según la estrategia de gestión de riesgo.*`
+                  );
+              } else if (newStatus === 'CASHED_OUT') {
+                  const isProfit = (targetBet.profitGrossCOP || 0) > 0;
+                  await sendSystemNotification(
+                      targetBet.partnerId,
+                      "💰 Cash Out Confirmado",
+                      `🔄 **CIERRE ANTICIPADO (CASH OUT)**\n--------------------------------\nEl sistema ha cerrado la operación manualmente para asegurar ganancias o mitigar riesgos.\n\n⚽ **Evento:** ${targetBet.homeTeam} vs ${targetBet.awayTeam}\n\n📥 **Inversión Inicial:** ${formatCurrency(targetBet.stakeCOP)}\n↪️ **Valor Recuperado:** ${formatCurrency(targetBet.finalReturnCOP || 0)}\n\n📊 **Resultado Operación:** ${isProfit ? '+' : ''}${formatCurrency(targetBet.profitGrossCOP || 0)}\n\n*Saldo actualizado.*`
+                  );
+              } else if (newStatus === 'VOID') {
+                  await sendSystemNotification(
+                      targetBet.partnerId,
+                      "⚠️ Apuesta Anulada (Void)",
+                      `⛔ **OPERACIÓN ANULADA**\n--------------------------------\nLa casa de apuestas ha anulado el evento ${targetBet.homeTeam} vs ${targetBet.awayTeam}.\n\n📥 **Inversión:** ${formatCurrency(targetBet.stakeCOP)}\n🔄 **Reembolso:** ${formatCurrency(targetBet.stakeCOP)}\n\n*El dinero ha regresado íntegramente a tu saldo sin generar ganancias ni pérdidas.*`
+                  );
               }
+
           } catch (err) {
               console.error("Error updating bet", err);
               setToast({ message: "Error guardando en la nube.", sender: "Sistema" });
@@ -548,18 +573,45 @@ const App: React.FC = () => {
      for (const b of newBets) {
          await sheetApi.saveBet(b);
      }
+     
+     // Notificación masiva única
+     if (newBets.length > 0) {
+         const pid = newBets[0].partnerId;
+         await sendSystemNotification(
+             pid,
+             "📥 Carga Masiva",
+             `📁 **IMPORTACIÓN EXITOSA**\n\nSe han cargado **${newBets.length} nuevas operaciones** a tu portafolio mediante proceso masivo.\n\nPuedes ver los detalles de cada una en tu Historial de Apuestas.`
+         );
+     }
+
      setToast({ message: `${newBets.length} apuestas importadas.`, sender: "Importador" });
   };
 
   const handleAddFund = async (newFund: Fund) => {
       setFunds(prev => [newFund, ...prev]);
       await sheetApi.saveFund(newFund);
-      setToast({ message: "Depósito registrado", sender: "Caja" });
+      
+      await sendSystemNotification(
+          newFund.partnerId || '',
+          "💵 Depósito Confirmado",
+          `🏦 **INGRESO DE CAPITAL**\n--------------------------------\nSe ha registrado un nuevo movimiento de fondos a tu favor.\n\n💰 **Monto:** ${formatCurrency(newFund.amountCOP)}\n📝 **Detalle:** ${newFund.description}\n\n*Este capital ya se encuentra disponible para operar.*`
+      );
+      
+      setToast({ message: "Depósito registrado y notificado", sender: "Caja" });
   };
 
   const handleUpdateWithdrawal = async (updatedWithdrawal: Withdrawal) => {
       setWithdrawals(prev => prev.map(w => w.withdrawalId === updatedWithdrawal.withdrawalId ? updatedWithdrawal : w));
       await sheetApi.updateWithdrawal(updatedWithdrawal);
+      
+      if (['APPROVED', 'PAID', 'REJECTED'].includes(updatedWithdrawal.status)) {
+          let statusText = updatedWithdrawal.status === 'PAID' ? '✅ PAGADO' : (updatedWithdrawal.status === 'APPROVED' ? '👍 APROBADO' : '🚫 RECHAZADO');
+          await sendSystemNotification(
+              updatedWithdrawal.partnerId,
+              "🏦 Actualización de Retiro",
+              `🔔 **ESTADO DE RETIRO ACTUALIZADO**\n\nTu solicitud por **${formatCurrency(updatedWithdrawal.amountCOP)}** ha cambiado de estado a:\n\n👉 **${statusText}**\n\n${updatedWithdrawal.status === 'PAID' ? 'Por favor verifica tu cuenta bancaria.' : 'Consulta la sección de Fondos para más detalles.'}`
+          );
+      }
   };
 
   const handleUpdateFund = async (updatedFund: Fund) => {

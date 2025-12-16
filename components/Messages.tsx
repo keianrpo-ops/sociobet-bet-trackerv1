@@ -11,6 +11,30 @@ interface MessagesProps {
   currentPartnerId?: string; // If logged in as partner
 }
 
+// Función auxiliar para renderizar texto con formato básico de negritas
+const formatMessageText = (text: string) => {
+    // Dividir por líneas para mantener estructura
+    return text.split('\n').map((line, i) => {
+        // Detectar si la línea es un separador
+        if (line.includes('----')) {
+            return <hr key={i} className="my-2 border-white/30" />;
+        }
+        
+        // Procesar negritas **texto**
+        const parts = line.split(/(\*\*.*?\*\*)/g);
+        return (
+            <div key={i} className="min-h-[1.2em]">
+                {parts.map((part, j) => {
+                    if (part.startsWith('**') && part.endsWith('**')) {
+                        return <strong key={j} className="font-bold">{part.slice(2, -2)}</strong>;
+                    }
+                    return <span key={j}>{part}</span>;
+                })}
+            </div>
+        );
+    });
+};
+
 export const Messages: React.FC<MessagesProps> = ({ messages, partners, onSendMessage, onMarkRead, isAdmin, currentPartnerId }) => {
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   const [inputText, setInputText] = useState('');
@@ -195,13 +219,17 @@ export const Messages: React.FC<MessagesProps> = ({ messages, partners, onSendMe
 
                         return (
                             <div key={msg.messageId} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[80%] lg:max-w-[60%] rounded-2xl px-4 py-3 text-sm shadow-sm relative group
+                                <div className={`max-w-[85%] lg:max-w-[65%] rounded-2xl px-5 py-4 text-sm shadow-md relative group transition-all
                                     ${isMe 
                                         ? 'bg-blue-600 text-white rounded-tr-none' 
                                         : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-none border border-slate-100 dark:border-slate-600'
                                     }`}>
-                                    <p className="leading-relaxed whitespace-pre-wrap">{msg.message}</p>
-                                    <div className={`text-[10px] mt-1 flex items-center justify-end gap-1 opacity-70 
+                                    {/* Renderizado especial con formato (Receipt Style) */}
+                                    <div className="leading-relaxed font-sans">
+                                        {formatMessageText(msg.message)}
+                                    </div>
+
+                                    <div className={`text-[10px] mt-2 flex items-center justify-end gap-1 opacity-70 
                                         ${isMe ? 'text-blue-100' : 'text-slate-400'}`}>
                                         <span>{msg.date}</span>
                                         {isMe && <Check className="w-3 h-3" />}
