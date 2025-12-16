@@ -881,7 +881,8 @@ const App: React.FC = () => {
                   onUpdateStatus={handleUpdateBetStatus} 
                   onEditBet={(id) => { const b = bets.find(x => x.betId === id); if(b){ setBetToEdit(b); setIsModalOpen(true); }}}
                   isAdmin={user.role === 'ADMIN'} 
-                  selectedPartnerId={user.role === 'PARTNER' ? user.partnerId : selectedPartner} 
+                  selectedPartnerId={user.role === 'PARTNER' ? user.partnerId : selectedPartner}
+                  partners={visiblePartners} // NEW: Pass visiblePartners
                 />
               </div>
             </div>
@@ -910,7 +911,8 @@ const App: React.FC = () => {
                   onUpdateStatus={handleUpdateBetStatus} 
                   onEditBet={(id) => { const b = bets.find(x => x.betId === id); if(b){ setBetToEdit(b); setIsModalOpen(true); }}}
                   isAdmin={user.role === 'ADMIN'} 
-                  selectedPartnerId={user.role === 'PARTNER' ? user.partnerId : selectedPartner} 
+                  selectedPartnerId={user.role === 'PARTNER' ? user.partnerId : selectedPartner}
+                  partners={visiblePartners} // NEW: Pass visiblePartners
                />
             </div>
           } />
