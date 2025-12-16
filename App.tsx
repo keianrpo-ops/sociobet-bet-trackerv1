@@ -15,7 +15,7 @@ import { ForgotPasswordModal } from './components/ForgotPasswordModal';
 import { sheetApi } from './services/sheetApi'; 
 import { Bet, Partner, BetStatus, Message, Fund, Withdrawal } from './types';
 import { calculateBetOutcome, formatCurrency, calculateDashboardStats } from './utils/calculations';
-import { LayoutDashboard, List, DollarSign, LogOut, RefreshCw, UserCircle, Menu, X, Moon, Sun, Mail, Users, Key, Loader2, Database, WifiOff, Settings, CloudDownload } from 'lucide-react';
+import { LayoutDashboard, List, DollarSign, LogOut, RefreshCw, UserCircle, Menu, X, Moon, Sun, Mail, Users, Key, Loader2, Database, WifiOff, Settings, CloudDownload, AlertCircle } from 'lucide-react';
 
 // --- Utils: LocalStorage (Cache para velocidad) ---
 const loadState = <T,>(key: string, fallback: T): T => {
@@ -33,22 +33,27 @@ const saveState = (key: string, value: any) => {
 
 // --- Components for Layout ---
 
-const SidebarItem = ({ to, icon: Icon, label, onClick }: any) => (
-  <NavLink 
-    to={to} 
-    onClick={onClick}
-    className={({ isActive }) => 
-      `flex items-center gap-3 px-4 py-3 rounded-lg transition-all mb-1 ${
-        isActive 
-          ? 'bg-gradient-to-r from-orange-600 to-orange-700 text-white shadow-md shadow-orange-200/50 font-semibold' 
-          : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium'
-      }`
-    }
-  >
-    <Icon className="w-5 h-5" />
-    <span className="">{label}</span>
-  </NavLink>
-);
+// FIX: Componente defensivo. Si el icono es undefined, usa un fallback para evitar pantalla blanca.
+const SidebarItem = ({ to, icon: Icon, label, onClick }: any) => {
+  const IconToRender = Icon || AlertCircle; // Fallback de seguridad
+  
+  return (
+    <NavLink 
+      to={to} 
+      onClick={onClick}
+      className={({ isActive }) => 
+        `flex items-center gap-3 px-4 py-3 rounded-lg transition-all mb-1 ${
+          isActive 
+            ? 'bg-gradient-to-r from-orange-600 to-orange-700 text-white shadow-md shadow-orange-200/50 font-semibold' 
+            : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium'
+        }`
+      }
+    >
+      <IconToRender className="w-5 h-5" />
+      <span className="">{label}</span>
+    </NavLink>
+  );
+};
 
 const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isSyncing, isDemoMode, onOpenProfile }: any) => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -144,9 +149,9 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
           <div className="ml-auto flex items-center gap-4">
              {/* Local Mode Badge */}
              {isDemoMode && (
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-full">
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-full animate-pulse">
                     <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                    <span className="text-xs font-bold text-amber-700 dark:text-amber-300">Modo Local (No guardado en nube)</span>
+                    <span className="text-xs font-bold text-amber-700 dark:text-amber-300">Modo Local (Sin conexión a Sheets)</span>
                 </div>
              )}
 
@@ -221,7 +226,7 @@ const App: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [isForgotOpen, setIsForgotOpen] = useState(false); // NEW STATE FOR FORGOT PASSWORD
+  const [isForgotOpen, setIsForgotOpen] = useState(false);
   const [betToEdit, setBetToEdit] = useState<Bet | null>(null);
   
   const [toast, setToast] = useState<{message: string, sender: string} | null>(null);
@@ -245,7 +250,7 @@ const App: React.FC = () => {
               // DETECTADO ERROR 503: Faltan credenciales.
               setIsDemoMode(true);
               if (isAuthenticated) {
-                 setToast({ message: "No hay conexión con Google Sheets. Los datos mostrados son locales.", sender: "Modo Offline" });
+                 setToast({ message: "⚠️ Sin conexión a Sheets. Usando datos locales.", sender: "Modo Offline" });
               }
           } else {
               // Éxito: Tenemos datos de la nube, actualizamos local
@@ -330,8 +335,13 @@ const App: React.FC = () => {
          // AUTO-INICIALIZAR NUBE (Importante para que la próxima vez cargue del Excel)
          if (!isDemoMode) {
              try {
-                await sheetApi.savePartner(adminProfile);
-                setToast({ message: "Base de datos inicializada con usuario Admin.", sender: "SocioBet Cloud" });
+                const res: any = await sheetApi.savePartner(adminProfile);
+                if (res?.mode === 'LOCAL_DEMO_SAVED') {
+                    setIsDemoMode(true);
+                    setToast({ message: "Admin creado SOLO localmente. Faltan credenciales en Vercel.", sender: "Aviso Importante" });
+                } else {
+                    setToast({ message: "Base de datos inicializada en la nube.", sender: "SocioBet Cloud" });
+                }
              } catch(err) {
                 console.error("Error autoinicializando admin", err);
              }
@@ -352,7 +362,7 @@ const App: React.FC = () => {
         }
         setIsAuthenticated(true);
     } else {
-        setLoginError('Usuario o contraseña incorrectos. Verifica espacios.');
+        setLoginError('Usuario o contraseña incorrectos.');
     }
   };
 
@@ -377,8 +387,13 @@ const App: React.FC = () => {
              setUser(prev => ({ ...prev, name: newPartner.name }));
           }
           // Llamada API
-          sheetApi.updatePartner(newPartner).catch(() => {
-              setToast({ message: "Error al actualizar en la nube. Cambios solo locales.", sender: "Error de Conexión" });
+          sheetApi.updatePartner(newPartner).then((res: any) => {
+               if (res?.mode?.includes('DEMO')) {
+                    setIsDemoMode(true);
+                    setToast({ message: "Cambio guardado LOCALMENTE. No se sincronizó con Sheets.", sender: "⚠️ Modo Offline" });
+               }
+          }).catch(() => {
+              setToast({ message: "Error de red. Cambio solo local.", sender: "Error" });
               setIsDemoMode(true);
           });
       } else {
@@ -386,13 +401,15 @@ const App: React.FC = () => {
           // Llamada API
           try {
              const res: any = await sheetApi.savePartner(newPartner);
-             if (res && res.error) {
-                 throw new Error(res.error);
+             if (res?.mode?.includes('DEMO')) {
+                 setIsDemoMode(true);
+                 setToast({ message: "Socio creado LOCALMENTE. Configura Vercel para guardar en la nube.", sender: "⚠️ Modo Offline" });
+             } else {
+                 setToast({ message: "Socio guardado en Google Sheets correctamente.", sender: "Nube" });
              }
-             setToast({ message: "Socio guardado en Google Sheets correctamente.", sender: "Nube" });
           } catch(e) {
               console.error("Error guardando socio", e);
-              setToast({ message: "¡ALERTA! El socio se creó localmente pero NO se guardó en Google Sheets. Revisa la configuración de Vercel.", sender: "Error Crítico" });
+              setToast({ message: "Error crítico guardando en nube.", sender: "Error" });
               setIsDemoMode(true);
           }
       }
