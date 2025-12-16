@@ -15,7 +15,7 @@ import { ForgotPasswordModal } from './components/ForgotPasswordModal';
 import { sheetApi } from './services/sheetApi'; 
 import { Bet, Partner, BetStatus, Message, Fund, Withdrawal } from './types';
 import { calculateBetOutcome, formatCurrency, calculateDashboardStats } from './utils/calculations';
-import { LayoutDashboard, List, DollarSign, LogOut, RefreshCw, UserCircle, Menu, X, Moon, Sun, Mail, Users, Key, Loader2, Database, WifiOff, Settings } from 'lucide-react';
+import { LayoutDashboard, List, DollarSign, LogOut, RefreshCw, UserCircle, Menu, X, Moon, Sun, Mail, Users, Key, Loader2, Database, WifiOff, Settings, CloudDownload } from 'lucide-react';
 
 // --- Utils: LocalStorage (Cache para velocidad) ---
 const loadState = <T,>(key: string, fallback: T): T => {
@@ -146,7 +146,7 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
              {isDemoMode && (
                 <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-full">
                     <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                    <span className="text-xs font-bold text-amber-700 dark:text-amber-300">Modo Local (Datos en navegador)</span>
+                    <span className="text-xs font-bold text-amber-700 dark:text-amber-300">Modo Local (No guardado en nube)</span>
                 </div>
              )}
 
@@ -162,14 +162,15 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
              <button 
               onClick={onSync}
               disabled={isSyncing}
+              title="Descargar datos de la nube (Sobrescribe cambios locales no guardados)"
               className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-bold transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed
                 ${isDemoMode 
                     ? 'bg-amber-100 border-amber-200 text-amber-800 dark:bg-amber-900 dark:border-amber-800 dark:text-amber-100 hover:bg-amber-200' 
                     : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600'
                 }`}
              >
-               <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} /> 
-               <span className="hidden sm:inline">{isSyncing ? 'Conectando...' : (isDemoMode ? 'Reconectar' : 'Sincronizar')}</span>
+               <CloudDownload className={`w-4 h-4 ${isSyncing ? 'animate-bounce' : ''}`} /> 
+               <span className="hidden sm:inline">{isSyncing ? 'Descargando...' : (isDemoMode ? 'Reconectar' : 'Descargar Datos')}</span>
              </button>
           </div>
         </header>
@@ -182,7 +183,7 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
                        <Loader2 className="w-6 h-6 animate-spin text-orange-600" />
                        <div>
                            <h4 className="font-bold text-slate-800 dark:text-white">Conectando con Google Sheets...</h4>
-                           <p className="text-xs text-slate-500">Verificando configuración de nube</p>
+                           <p className="text-xs text-slate-500">Descargando últimos datos</p>
                        </div>
                    </div>
                </div>
@@ -244,7 +245,7 @@ const App: React.FC = () => {
               // DETECTADO ERROR 503: Faltan credenciales.
               setIsDemoMode(true);
               if (isAuthenticated) {
-                 setToast({ message: "Modo Local: Tus datos se guardan en este navegador.", sender: "Sin Conexión a Nube" });
+                 setToast({ message: "No hay conexión con Google Sheets. Los datos mostrados son locales.", sender: "Modo Offline" });
               }
           } else {
               // Éxito: Tenemos datos de la nube, actualizamos local
@@ -266,7 +267,7 @@ const App: React.FC = () => {
 
       } catch (error) {
           console.error("Error crítico de sincronización:", error);
-          setToast({ message: "Error de red. Usando datos locales.", sender: "Sistema" });
+          setToast({ message: "Error de red al conectar con Google.", sender: "Sistema" });
           setIsDemoMode(true);
       } finally {
           setIsSyncing(false);
@@ -302,8 +303,11 @@ const App: React.FC = () => {
     e.preventDefault();
     setLoginError('');
 
+    const safeUser = loginUsername.trim().toLowerCase();
+    const safePass = loginPassword.trim();
+
     // Fallback: Si la hoja está vacía (o modo local inicial), permitir entrar como Admin
-    if (partners.length === 0 && loginUsername === 'admin' && loginPassword === '123') {
+    if (partners.length === 0 && safeUser === 'admin' && safePass === '123') {
          // Crear el perfil Admin
          const adminProfile: Partner = { 
             partnerId: 'P001', 
@@ -335,7 +339,8 @@ const App: React.FC = () => {
          return;
     }
 
-    const matchedPartner = partners.find(p => p.username === loginUsername && p.password === loginPassword);
+    // Buscamos usuario ignorando mayúsculas/minúsculas en el nombre
+    const matchedPartner = partners.find(p => (p.username || '').toLowerCase() === safeUser && p.password === safePass);
 
     if (matchedPartner) {
         if (matchedPartner.partnerId === 'P001' || matchedPartner.username === 'admin') { 
@@ -347,7 +352,7 @@ const App: React.FC = () => {
         }
         setIsAuthenticated(true);
     } else {
-        setLoginError('Usuario o contraseña incorrectos');
+        setLoginError('Usuario o contraseña incorrectos. Verifica espacios.');
     }
   };
 
@@ -365,17 +370,31 @@ const App: React.FC = () => {
   const handleCreatePartner = async (newPartner: Partner) => {
       const exists = partners.find(p => p.partnerId === newPartner.partnerId);
       
+      // 1. Actualización Optimista (Visualmente inmediato)
       if (exists) {
           setPartners(prev => prev.map(p => p.partnerId === newPartner.partnerId ? newPartner : p));
-          await sheetApi.updatePartner(newPartner);
-          
-          // Si me actualicé a mí mismo, actualizar estado de usuario
           if (user.partnerId === newPartner.partnerId) {
              setUser(prev => ({ ...prev, name: newPartner.name }));
           }
+          // Llamada API
+          sheetApi.updatePartner(newPartner).catch(() => {
+              setToast({ message: "Error al actualizar en la nube. Cambios solo locales.", sender: "Error de Conexión" });
+              setIsDemoMode(true);
+          });
       } else {
           setPartners(prev => [...prev, newPartner]);
-          await sheetApi.savePartner(newPartner);
+          // Llamada API
+          try {
+             const res: any = await sheetApi.savePartner(newPartner);
+             if (res && res.error) {
+                 throw new Error(res.error);
+             }
+             setToast({ message: "Socio guardado en Google Sheets correctamente.", sender: "Nube" });
+          } catch(e) {
+              console.error("Error guardando socio", e);
+              setToast({ message: "¡ALERTA! El socio se creó localmente pero NO se guardó en Google Sheets. Revisa la configuración de Vercel.", sender: "Error Crítico" });
+              setIsDemoMode(true);
+          }
       }
   };
 
@@ -397,6 +416,7 @@ const App: React.FC = () => {
   // --- BETS ---
   const handleSaveBet = async (betData: any) => {
     let newBetObj: Bet | null = null;
+    let isNew = false;
 
     if (betToEdit) {
         const updatedBets = bets.map(b => {
@@ -421,16 +441,19 @@ const App: React.FC = () => {
         if (newBetObj) await sheetApi.updateBet(newBetObj);
         setBetToEdit(null);
     } else {
+        isNew = true;
         const newBet: Bet = {
           ...betData,
           betId: `B-${Date.now()}`,
           expectedReturnCOP: betData.stakeCOP * betData.oddsDecimal,
           status: 'PENDING'
         };
+        newBetObj = newBet;
         setBets([newBet, ...bets]);
         await sheetApi.saveBet(newBet);
     }
     setIsModalOpen(false);
+    if(newBetObj) setToast({ message: isNew ? "Apuesta registrada" : "Apuesta actualizada", sender: "Sistema" });
   };
 
   const handleUpdateBetStatus = async (betId: string, newStatus: BetStatus, cashoutVal?: number) => {
@@ -470,15 +493,18 @@ const App: React.FC = () => {
      
      setBets([...newBets, ...bets]);
      
+     // Guardar en lotes para no saturar
      for (const b of newBets) {
          await sheetApi.saveBet(b);
      }
+     setToast({ message: `${newBets.length} apuestas importadas correctamente.`, sender: "Importador" });
   };
 
   // --- FUNDS ---
   const handleAddFund = async (newFund: Fund) => {
       setFunds(prev => [newFund, ...prev]);
       await sheetApi.saveFund(newFund);
+      setToast({ message: "Depósito registrado", sender: "Caja" });
   };
 
   const handleUpdateWithdrawal = async (updatedWithdrawal: Withdrawal) => {
@@ -549,7 +575,7 @@ const App: React.FC = () => {
           
           <form onSubmit={handleLogin} className="space-y-4">
             {loginError && (
-                <div className="bg-rose-50 text-rose-600 p-3 rounded-lg text-sm text-center border border-rose-100 dark:bg-rose-900/20 dark:border-rose-800 dark:text-rose-300">
+                <div className="bg-rose-50 text-rose-600 p-3 rounded-lg text-sm text-center border border-rose-100 dark:bg-rose-900/20 dark:border-rose-800 dark:text-rose-300 animate-pulse">
                     {loginError}
                 </div>
             )}
