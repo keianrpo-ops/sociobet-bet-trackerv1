@@ -3,27 +3,47 @@ import { supabase } from '../lib/supabase';
 
 // --- SUPABASE API SERVICE ---
 
-// NOTA: Usamos nombres de tablas en minúscula ('partners', 'bets'...) 
-// porque Postgres/Supabase es sensible a mayúsculas si no se usan comillas,
-// y por defecto las crea en minúscula.
+// Helper: Limpia la apuesta de campos calculados que NO existen en la base de datos
+const cleanBetForDB = (b: Bet) => {
+    return {
+        betId: b.betId,
+        partnerId: b.partnerId,
+        date: b.date,
+        sport: b.sport || 'General',
+        homeTeam: b.homeTeam,
+        awayTeam: b.awayTeam,
+        marketDescription: b.marketDescription,
+        oddsDecimal: Number(b.oddsDecimal), // Asegurar número
+        stakeCOP: Number(b.stakeCOP),       // Asegurar número
+        status: b.status,
+        cashoutReturnCOP: Number(b.cashoutReturnCOP || 0),
+        notes: b.notes || ''
+        // EXCLUIMOS: expectedReturnCOP, finalReturnCOP, profitGrossCOP, etc.
+        // Supabase rebotará la actualización si enviamos columnas que no existen.
+    };
+};
 
 export const sheetApi = {
     // 1. SYNC: Load everything
     async syncAll() {
         try {
+            // Intentamos leer con mayúsculas (Estándar Code.gs)
             const [partners, bets, funds, withdrawals, messages] = await Promise.all([
-                supabase.from('partners').select('*'),
-                supabase.from('bets').select('*'),
-                supabase.from('funds').select('*'),
-                supabase.from('withdrawals').select('*'),
-                supabase.from('messages').select('*')
+                supabase.from('Partners').select('*'),
+                supabase.from('Bets').select('*'),
+                supabase.from('Funds').select('*'),
+                supabase.from('Withdrawals').select('*'),
+                supabase.from('Messages').select('*')
             ]);
 
-            // Check for specific table errors
-            if (partners.error) console.error("Error syncing partners:", partners.error);
-            if (bets.error) console.error("Error syncing bets:", bets.error);
+            // Verificación de errores de tabla no encontrada
+            if (partners.error) console.error("Error Partners:", partners.error.message);
+            
+            // Si fallan las mayúsculas, Supabase a veces requiere minúsculas (fallback implícito en lógica de usuario)
+            // Pero aquí asumimos que la estructura sigue el patrón del Apps Script.
 
             if (partners.error || bets.error) {
+                // Si falla la lectura, devolvemos null para activar modo demo/error
                 return null;
             }
 
@@ -42,64 +62,69 @@ export const sheetApi = {
 
     // 2. CREATE (INSERT)
     async savePartner(p: Partner) { 
-        const { error } = await supabase.from('partners').insert(p);
+        const { error } = await supabase.from('Partners').insert(p);
         if (error) throw error;
         return { success: true };
     },
     async saveBet(b: Bet) { 
-        const { error } = await supabase.from('bets').insert(b);
+        const dbBet = cleanBetForDB(b);
+        const { error } = await supabase.from('Bets').insert(dbBet);
         if (error) throw error;
         return { success: true };
     },
     async saveFund(f: Fund) { 
-        const { error } = await supabase.from('funds').insert(f);
+        const { error } = await supabase.from('Funds').insert(f);
         if (error) throw error;
         return { success: true };
     },
     async saveWithdrawal(w: Withdrawal) { 
-        const { error } = await supabase.from('withdrawals').insert(w);
+        const { error } = await supabase.from('Withdrawals').insert(w);
         if (error) throw error;
         return { success: true };
     },
     async saveMessage(m: Message) { 
-        const { error } = await supabase.from('messages').insert(m);
+        const { error } = await supabase.from('Messages').insert(m);
         if (error) throw error;
         return { success: true };
     },
 
-    // 3. UPDATE CON VERIFICACIÓN
+    // 3. UPDATE CON LIMPIEZA DE DATOS
     async updateBet(b: Bet) { 
-        const { error, count } = await supabase.from('bets').update(b).eq('betId', b.betId).select('betId', { count: 'exact' });
-        if (error) throw error;
-        if (count === 0) throw new Error(`ID no encontrado: ${b.betId}`);
+        const dbBet = cleanBetForDB(b);
+        const { error, count } = await supabase.from('Bets').update(dbBet).eq('betId', dbBet.betId).select('betId', { count: 'exact' });
+        
+        if (error) {
+            console.error("Supabase Update Error (Bets):", error);
+            throw error;
+        }
+        if (count === 0) throw new Error(`Apuesta no encontrada en BD: ${dbBet.betId}`);
         return { success: true };
     },
     async updateFund(f: Fund) { 
-        const { error, count } = await supabase.from('funds').update(f).eq('fundId', f.fundId).select('fundId', { count: 'exact' });
+        const { error, count } = await supabase.from('Funds').update(f).eq('fundId', f.fundId).select('fundId', { count: 'exact' });
         if (error) throw error;
-        if (count === 0) throw new Error(`ID no encontrado: ${f.fundId}`);
         return { success: true };
     },
     async updateWithdrawal(w: Withdrawal) { 
-        const { error, count } = await supabase.from('withdrawals').update(w).eq('withdrawalId', w.withdrawalId).select('withdrawalId', { count: 'exact' });
+        const { error, count } = await supabase.from('Withdrawals').update(w).eq('withdrawalId', w.withdrawalId).select('withdrawalId', { count: 'exact' });
         if (error) throw error;
-        if (count === 0) throw new Error(`ID no encontrado: ${w.withdrawalId}`);
+        if (count === 0) throw new Error(`Retiro no encontrado: ${w.withdrawalId}`);
         return { success: true };
     },
     async updatePartner(p: Partner) { 
-        const { error } = await supabase.from('partners').update(p).eq('partnerId', p.partnerId);
+        const { error } = await supabase.from('Partners').update(p).eq('partnerId', p.partnerId);
         if (error) throw error;
         return { success: true };
     },
     async updateMessage(m: Message) { 
-        const { error } = await supabase.from('messages').update(m).eq('messageId', m.messageId);
+        const { error } = await supabase.from('Messages').update(m).eq('messageId', m.messageId);
         if (error) throw error;
         return { success: true };
     },
 
     // 4. DELETE
     async deleteFund(fundId: string) { 
-        const { error } = await supabase.from('funds').delete().eq('fundId', fundId);
+        const { error } = await supabase.from('Funds').delete().eq('fundId', fundId);
         if (error) throw error;
         return { success: true };
     }
