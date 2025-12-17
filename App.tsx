@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import { Dashboard } from './components/Dashboard';
 import { BetTable } from './components/BetTable';
@@ -168,7 +168,7 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
              </button>
 
              <button 
-              onClick={onSync}
+              onClick={() => onSync(false)}
               disabled={isSyncing}
               title="Sincronizar datos con Supabase"
               className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-bold transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed
@@ -186,14 +186,10 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
         {/* Scrollable Area */}
         <div className="flex-1 overflow-y-auto p-4 lg:p-8 relative">
            {isSyncing && (
-               <div className="absolute inset-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-[1px] z-20 flex items-center justify-center animate-in fade-in">
-                   <div className="bg-white dark:bg-slate-800 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 border border-slate-200 dark:border-slate-700">
-                       <SafeIcon icon={Loader2} className="w-6 h-6 animate-spin text-orange-600" />
-                       <div>
-                           <h4 className="font-bold text-slate-800 dark:text-white">Conectando con Supabase...</h4>
-                           <p className="text-xs text-slate-500">Sincronizando base de datos</p>
-                       </div>
-                   </div>
+               <div className="absolute top-2 right-2 z-50">
+                    <div className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-full shadow-lg text-xs font-bold animate-pulse">
+                        <SafeIcon icon={Loader2} className="w-3 h-3 animate-spin" /> Actualizando datos...
+                    </div>
                </div>
            )}
            <div className="max-w-7xl mx-auto pb-10">
@@ -265,16 +261,19 @@ const App: React.FC = () => {
       }
   }, [isAuthenticated, user, selectedPartner]);
 
-  // --- API SYNC FUNCTION ---
-  const performSync = async () => {
-      setIsSyncing(true);
+  // --- API SYNC FUNCTION (MEJORADA CON MODO SILENCIOSO Y ACTUALIZACIÓN DE SESIÓN) ---
+  const performSync = useCallback(async (silent = false) => {
+      if (!silent) setIsSyncing(true);
       try {
           const data = await sheetApi.syncAll();
           
           if (data === null) {
-              setIsDemoMode(true);
-              if (isAuthenticated) {
-                 setToast({ message: "⚠️ Error conectando a BD. Verifica claves.", sender: "Error Sistema" });
+              // Si falla en silencio, no interrumpimos al usuario
+              if (!silent) {
+                  setIsDemoMode(true);
+                  if (isAuthenticated) {
+                     setToast({ message: "⚠️ Error conectando a BD. Verifica conexión.", sender: "Error Sistema" });
+                  }
               }
           } else {
               setPartners(data.partners);
@@ -289,21 +288,47 @@ const App: React.FC = () => {
               saveState('sb_withdrawals', data.withdrawals);
               saveState('sb_messages', data.messages);
               
+              // REFRESCAR DATOS DE SESIÓN DEL USUARIO (IMPORTANTE PARA "EL SOCIO NO ACTUALIZA")
+              if (isAuthenticated && user.partnerId && user.partnerId !== 'P001') {
+                   const currentUserData = data.partners.find(p => p.partnerId === user.partnerId);
+                   if (currentUserData) {
+                       // Si el nombre o el profit cambiaron en la BD, actualizamos el estado local del usuario
+                       if (currentUserData.name !== user.name) {
+                           setUser(prev => ({ ...prev, name: currentUserData.name }));
+                       }
+                   }
+              }
+
               setIsDemoMode(false);
           }
 
       } catch (error) {
           console.error("Error crítico de sincronización:", error);
-          setToast({ message: "Error de red al conectar con Supabase.", sender: "Sistema" });
-          setIsDemoMode(true);
+          if (!silent) {
+              setToast({ message: "Error de red al sincronizar.", sender: "Sistema" });
+              setIsDemoMode(true);
+          }
       } finally {
           setIsSyncing(false);
       }
-  };
+  }, [isAuthenticated, user]);
 
+  // --- AUTO-SYNC POLLING (TRANSPARENCIA TOTAL) ---
   useEffect(() => {
-      performSync();
-  }, []);
+      if (!isAuthenticated) return;
+
+      // Sincronización inicial
+      performSync(false);
+
+      // Polling cada 15 segundos para traer mensajes y cambios
+      const intervalId = setInterval(() => {
+          if (!isSyncing) {
+              performSync(true); // Silent sync
+          }
+      }, 15000);
+
+      return () => clearInterval(intervalId);
+  }, [isAuthenticated, performSync]); // isSyncing se chequea dentro del intervalo
   
   useEffect(() => { saveState('sb_partners', partners); }, [partners]);
   useEffect(() => { saveState('sb_bets', bets); }, [bets]);
@@ -809,7 +834,7 @@ const App: React.FC = () => {
       <Layout 
         user={user} 
         onLogout={() => { setIsAuthenticated(false); setLoginPassword(''); }} 
-        onSync={performSync}
+        onSync={() => performSync(false)}
         isDarkMode={isDarkMode}
         toggleTheme={toggleTheme}
         isSyncing={isSyncing}
