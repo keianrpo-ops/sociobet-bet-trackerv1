@@ -293,9 +293,8 @@ const App: React.FC = () => {
               console.warn("[System] Sync returned NULL. Check Supabase connection.");
               if (!silent) {
                   setIsDemoMode(true);
-                  // Solo mostrar toast si no es modo silencioso y si estamos logueados
-                  if (isAuthenticated && !isSyncingRef.current) { 
-                     // Evitar spam de toasts
+                  if (isAuthenticated) {
+                     // No spam de toasts
                   }
               }
           } else {
@@ -390,8 +389,14 @@ const App: React.FC = () => {
       };
       
       setMessages(prev => [...prev, newMessage]);
-      await sheetApi.saveMessage(newMessage);
-      setToast({ message: `📩 Notificación enviada a ${partners.find(p=>p.partnerId === partnerId)?.name || 'Socio'}`, sender: "Sistema" });
+      
+      try {
+          await sheetApi.saveMessage(newMessage);
+          setToast({ message: `📩 Notificación enviada a ${partners.find(p=>p.partnerId === partnerId)?.name || 'Socio'}`, sender: "Sistema" });
+      } catch (err: any) {
+          console.error("Error enviando notificación:", err);
+          setToast({ message: `⚠️ Error enviando mensaje a socio: ${err.message || 'Desconocido'}`, sender: "Sistema" });
+      }
   };
 
   // --- LOGIN ---
@@ -596,6 +601,8 @@ const App: React.FC = () => {
         }
     }
     
+    // Trigger immediate sync to update balance derived from DB
+    performSync(true);
     setIsModalOpen(false);
   };
 
@@ -674,6 +681,9 @@ const App: React.FC = () => {
                   );
               }
 
+              // Trigger sync
+              performSync(true);
+
           } catch (err: any) {
               console.error("Error updating bet", err);
               setBets(oldBets); // ROLLBACK
@@ -707,6 +717,10 @@ const App: React.FC = () => {
              );
          }
          setToast({ message: `${newBets.length} apuestas importadas.`, sender: "Importador" });
+         
+         // Trigger sync
+         performSync(true);
+
      } catch (err: any) {
          setBets(oldBets); // ROLLBACK
          const errorMessage = err.message || err.details || "Error desconocido";
@@ -725,6 +739,7 @@ const App: React.FC = () => {
               `🏦 **INGRESO DE CAPITAL**\n--------------------------------\nSe ha registrado un nuevo movimiento de fondos a tu favor.\n\n💰 **Monto:** ${formatCurrency(newFund.amountCOP)}\n📝 **Detalle:** ${newFund.description}\n\n*Este capital ya se encuentra disponible para operar.*`
           );
           setToast({ message: "Depósito registrado y notificado", sender: "Caja" });
+          performSync(true);
       } catch (err: any) {
           console.error("Error save fund", err);
           setFunds(oldFunds); // ROLLBACK
@@ -756,6 +771,7 @@ const App: React.FC = () => {
               );
           }
           setToast({ message: "Retiro actualizado correctamente.", sender: "Sistema" });
+          performSync(true);
 
       } catch (err: any) {
           console.error("Failed to update withdrawal in DB", err);
@@ -774,6 +790,7 @@ const App: React.FC = () => {
           const res = await sheetApi.updateFund(updatedFund);
           if(!res.success) throw new Error("API Failure");
           setToast({ message: "Fondo actualizado.", sender: "Sistema" });
+          performSync(true);
       } catch(err: any) {
           console.error("Error updating fund", err);
           setFunds(oldFunds); // ROLLBACK
@@ -788,6 +805,7 @@ const App: React.FC = () => {
       try {
           await sheetApi.deleteFund(fundId);
           setToast({ message: "Registro eliminado.", sender: "Sistema" });
+          performSync(true);
       } catch (err: any) {
           setFunds(oldFunds); // ROLLBACK
           const errorMessage = err.message || err.details || "Error desconocido";
@@ -809,7 +827,13 @@ const App: React.FC = () => {
           isFromAdmin: isFromAdmin
       };
       setMessages(prev => [...prev, newMessage]); 
-      await sheetApi.saveMessage(newMessage);
+      
+      try {
+          await sheetApi.saveMessage(newMessage);
+      } catch (err: any) {
+          setToast({ message: `❌ Error enviando mensaje: ${err.message}`, sender: "Sistema" });
+          // Optional: Remove message from state if failed, or show error icon
+      }
   };
 
   const handleMarkRead = async (messageId: string) => {
