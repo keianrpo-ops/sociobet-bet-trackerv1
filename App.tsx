@@ -293,8 +293,9 @@ const App: React.FC = () => {
               console.warn("[System] Sync returned NULL. Check Supabase connection.");
               if (!silent) {
                   setIsDemoMode(true);
-                  if (isAuthenticated) {
-                     setToast({ message: "⚠️ Error conectando a BD. Verifica conexión.", sender: "Error Sistema" });
+                  // Solo mostrar toast si no es modo silencioso y si estamos logueados
+                  if (isAuthenticated && !isSyncingRef.current) { 
+                     // Evitar spam de toasts
                   }
               }
           } else {
@@ -556,7 +557,8 @@ const App: React.FC = () => {
 
             } catch (err: any) {
                 setBets(oldBets); // ROLLBACK
-                setToast({ message: `❌ Error guardando apuesta: ${err.message}`, sender: "Base de Datos" });
+                const errorMessage = err.message || err.details || "Error desconocido";
+                setToast({ message: `❌ Error guardando apuesta: ${errorMessage}`, sender: "Base de Datos" });
             }
         }
 
@@ -589,7 +591,8 @@ const App: React.FC = () => {
 
         } catch (err: any) {
             setBets(oldBets); // ROLLBACK
-            setToast({ message: `❌ Error creando apuesta: ${err.message}`, sender: "Base de Datos" });
+            const errorMessage = err.message || err.details || "Error desconocido";
+            setToast({ message: `❌ Error creando apuesta: ${errorMessage}`, sender: "Base de Datos" });
         }
     }
     
@@ -674,7 +677,8 @@ const App: React.FC = () => {
           } catch (err: any) {
               console.error("Error updating bet", err);
               setBets(oldBets); // ROLLBACK
-              setToast({ message: `❌ Error al actualizar estado: ${err.message}`, sender: "Base de Datos" });
+              const errorMessage = err.message || err.details || "Error desconocido";
+              setToast({ message: `❌ Error al actualizar estado: ${errorMessage}`, sender: "Base de Datos" });
           }
       }
   };
@@ -705,7 +709,8 @@ const App: React.FC = () => {
          setToast({ message: `${newBets.length} apuestas importadas.`, sender: "Importador" });
      } catch (err: any) {
          setBets(oldBets); // ROLLBACK
-         setToast({ message: `❌ Error importando apuestas: ${err.message}`, sender: "Base de Datos" });
+         const errorMessage = err.message || err.details || "Error desconocido";
+         setToast({ message: `❌ Error importando apuestas: ${errorMessage}`, sender: "Base de Datos" });
      }
   };
 
@@ -723,7 +728,8 @@ const App: React.FC = () => {
       } catch (err: any) {
           console.error("Error save fund", err);
           setFunds(oldFunds); // ROLLBACK
-          setToast({ message: `❌ Error guardando depósito: ${err.message}`, sender: "Sistema" });
+          const errorMessage = err.message || err.details || "Error desconocido";
+          setToast({ message: `❌ Error guardando depósito: ${errorMessage}`, sender: "Sistema" });
       }
   };
 
@@ -755,7 +761,8 @@ const App: React.FC = () => {
           console.error("Failed to update withdrawal in DB", err);
           // 5. ROLLBACK: Revertir al estado anterior para que el usuario vea que falló
           setWithdrawals(oldWithdrawals);
-          setToast({ message: `❌ ERROR CRÍTICO: No se guardó. ${err.message}`, sender: "Error BD" });
+          const errorMessage = err.message || err.details || "Error desconocido";
+          setToast({ message: `❌ ERROR CRÍTICO: No se guardó. ${errorMessage}`, sender: "Error BD" });
       }
   };
 
@@ -770,7 +777,8 @@ const App: React.FC = () => {
       } catch(err: any) {
           console.error("Error updating fund", err);
           setFunds(oldFunds); // ROLLBACK
-          setToast({ message: `❌ Error actualizando fondo: ${err.message}`, sender: "Error BD" });
+          const errorMessage = err.message || err.details || "Error desconocido";
+          setToast({ message: `❌ Error actualizando fondo: ${errorMessage}`, sender: "Error BD" });
       }
   };
 
@@ -782,7 +790,8 @@ const App: React.FC = () => {
           setToast({ message: "Registro eliminado.", sender: "Sistema" });
       } catch (err: any) {
           setFunds(oldFunds); // ROLLBACK
-          setToast({ message: `❌ Error eliminando: ${err.message}`, sender: "Error BD" });
+          const errorMessage = err.message || err.details || "Error desconocido";
+          setToast({ message: `❌ Error eliminando: ${errorMessage}`, sender: "Error BD" });
       }
   };
 
