@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Message, Partner } from '../types';
-import { Send, Search, User, Clock, Check, MoreVertical, Phone, Shield } from 'lucide-react';
+import { Send, Search, User, Phone, MoreVertical, Shield, Check, TrendingUp, TrendingDown, AlertCircle, DollarSign } from 'lucide-react';
 
 interface MessagesProps {
   messages: Message[];
@@ -11,28 +11,68 @@ interface MessagesProps {
   currentPartnerId?: string; // If logged in as partner
 }
 
-// Función auxiliar para renderizar texto con formato básico de negritas
+// Función auxiliar para renderizar texto con formato mejorado
 const formatMessageText = (text: string) => {
-    // Dividir por líneas para mantener estructura
     return text.split('\n').map((line, i) => {
-        // Detectar si la línea es un separador
         if (line.includes('----')) {
-            return <hr key={i} className="my-2 border-white/30" />;
+            return <hr key={i} className="my-3 border-white/20" />;
         }
         
-        // Procesar negritas **texto**
+        // Procesar negritas y emojis para darles más espacio
         const parts = line.split(/(\*\*.*?\*\*)/g);
         return (
-            <div key={i} className="min-h-[1.2em]">
+            <div key={i} className="min-h-[1.4em] mb-1">
                 {parts.map((part, j) => {
                     if (part.startsWith('**') && part.endsWith('**')) {
-                        return <strong key={j} className="font-bold">{part.slice(2, -2)}</strong>;
+                        return <strong key={j} className="font-bold tracking-wide">{part.slice(2, -2)}</strong>;
                     }
                     return <span key={j}>{part}</span>;
                 })}
             </div>
         );
     });
+};
+
+// Función para determinar el estilo de la burbuja basado en el contenido
+const getMessageStyle = (subject: string, message: string, isMe: boolean, isSystem: boolean) => {
+    const content = (subject + message).toLowerCase();
+
+    // 1. Mensajes Positivos (Verde)
+    if (content.includes('victoria') || content.includes('ganada') || content.includes('exitosa') || content.includes('depósito') || content.includes('cash out')) {
+        return {
+            container: 'bg-emerald-600 text-white shadow-emerald-200 dark:shadow-none border border-emerald-500',
+            icon: <TrendingUp className="w-4 h-4 text-emerald-100" />
+        };
+    }
+
+    // 2. Mensajes Negativos / Alertas (Rojo Opaco / Vino)
+    if (content.includes('pérdida') || content.includes('perdida') || content.includes('negativo') || content.includes('anulada') || content.includes('rechazado')) {
+        return {
+            container: 'bg-rose-900 text-rose-50 shadow-rose-200 dark:shadow-none border border-rose-800',
+            icon: <TrendingDown className="w-4 h-4 text-rose-300" />
+        };
+    }
+    
+    // 3. Retiros (Ámbar/Naranja) - Neutral/Atención
+    if (content.includes('retiro') || content.includes('solicitud')) {
+        return {
+             container: 'bg-amber-600 text-white shadow-amber-200 dark:shadow-none border border-amber-500',
+             icon: <AlertCircle className="w-4 h-4 text-amber-100" />
+        };
+    }
+
+    // 4. Mensajes Estándar (Azul para mí, Blanco/Gris para otro)
+    if (isMe) {
+        return {
+            container: 'bg-blue-600 text-white shadow-blue-200 dark:shadow-none rounded-tr-none',
+            icon: null
+        };
+    } else {
+        return {
+            container: 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-600 rounded-tl-none',
+            icon: null
+        };
+    }
 };
 
 export const Messages: React.FC<MessagesProps> = ({ messages, partners, onSendMessage, onMarkRead, isAdmin, currentPartnerId }) => {
@@ -42,26 +82,19 @@ export const Messages: React.FC<MessagesProps> = ({ messages, partners, onSendMe
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // EFECTO: Si soy socio, autoselecciono mi propio chat y no permito cambiar
   useEffect(() => {
       if (!isAdmin && currentPartnerId) {
           setSelectedPartnerId(currentPartnerId);
       }
   }, [isAdmin, currentPartnerId]);
 
-  // 1. Agrupar mensajes para ADMIN
-  // Si es admin, ve la lista completa. Si no, esta lista se ignora visualmente.
   const chats = partners.filter(p => p.partnerId !== 'P001').map(partner => {
       const partnerMsgs = messages.filter(m => m.partnerId === partner.partnerId);
       const sorted = [...partnerMsgs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
       const lastMsg = sorted[0];
       const unreadCount = partnerMsgs.filter(m => !m.isFromAdmin && m.status === 'UNREAD').length;
 
-      return {
-          partner,
-          lastMsg,
-          unreadCount
-      };
+      return { partner, lastMsg, unreadCount };
   }).filter(chat => 
       chat.partner.name.toLowerCase().includes(searchTerm.toLowerCase())
   ).sort((a, b) => {
@@ -72,7 +105,6 @@ export const Messages: React.FC<MessagesProps> = ({ messages, partners, onSendMe
       return dateB - dateA;
   });
 
-  // 2. Obtener mensajes del chat activo
   const activeChatId = isAdmin ? selectedPartnerId : currentPartnerId;
   
   const activeMessages = activeChatId 
@@ -85,15 +117,11 @@ export const Messages: React.FC<MessagesProps> = ({ messages, partners, onSendMe
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeMessages, activeChatId]);
 
-  // Marcar leídos
   useEffect(() => {
     if (activeChatId) {
-        // Si soy Admin, marco como leído lo que viene del socio (!isFromAdmin)
-        // Si soy Socio, marco como leído lo que viene del Admin (isFromAdmin)
         const unreadIds = messages
             .filter(m => m.partnerId === activeChatId && m.status === 'UNREAD' && (isAdmin ? !m.isFromAdmin : m.isFromAdmin))
             .map(m => m.messageId);
-        
         unreadIds.forEach(id => onMarkRead(id));
     }
   }, [activeChatId, messages, onMarkRead, isAdmin]);
@@ -113,7 +141,6 @@ export const Messages: React.FC<MessagesProps> = ({ messages, partners, onSendMe
   return (
     <div className="flex h-[calc(100vh-140px)] bg-white dark:bg-slate-800 rounded-xl shadow-md border border-slate-200 dark:border-slate-700 overflow-hidden animate-in fade-in duration-500">
       
-      {/* SIDEBAR: SOLO VISIBLE PARA ADMIN */}
       {isAdmin && (
           <div className={`${selectedPartnerId ? 'hidden lg:flex' : 'flex'} flex-col w-full lg:w-80 border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50`}>
              <div className="p-4 border-b border-slate-200 dark:border-slate-700">
@@ -167,11 +194,9 @@ export const Messages: React.FC<MessagesProps> = ({ messages, partners, onSendMe
           </div>
       )}
 
-      {/* MAIN CHAT AREA */}
       <div className={`${!selectedPartnerId && isAdmin ? 'hidden lg:flex' : 'flex'} flex-1 flex-col bg-slate-100 dark:bg-slate-900/50`}>
          {activeChatId ? (
              <>
-                {/* Header Chat */}
                 <div className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-6 shadow-sm shrink-0">
                     <div className="flex items-center gap-3">
                         {isAdmin && (
@@ -203,8 +228,7 @@ export const Messages: React.FC<MessagesProps> = ({ messages, partners, onSendMe
                     </div>
                 </div>
 
-                {/* Messages Area */}
-                <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4 scroll-smooth">
+                <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6 scroll-smooth">
                     <div className="flex justify-center">
                          <span className="bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 text-[10px] px-3 py-1 rounded-full font-bold uppercase tracking-wide">
                             Inicio de la conversación
@@ -212,25 +236,26 @@ export const Messages: React.FC<MessagesProps> = ({ messages, partners, onSendMe
                     </div>
 
                     {activeMessages.map((msg) => {
-                        // Determinar si es "Mío" o "Del Otro"
-                        // Si soy Admin: isFromAdmin -> Mío.
-                        // Si soy Socio: !isFromAdmin -> Mío (porque yo no soy Admin).
                         const isMe = isAdmin ? msg.isFromAdmin : !msg.isFromAdmin;
+                        const isSystem = msg.isFromAdmin && msg.senderName.includes('System');
+                        const style = getMessageStyle(msg.subject, msg.message, isMe, isSystem);
 
                         return (
-                            <div key={msg.messageId} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[85%] lg:max-w-[65%] rounded-2xl px-5 py-4 text-sm shadow-md relative group transition-all
-                                    ${isMe 
-                                        ? 'bg-blue-600 text-white rounded-tr-none' 
-                                        : 'bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 rounded-tl-none border border-slate-100 dark:border-slate-600'
-                                    }`}>
-                                    {/* Renderizado especial con formato (Receipt Style) */}
-                                    <div className="leading-relaxed font-sans">
+                            <div key={msg.messageId} className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`relative max-w-[85%] lg:max-w-[70%] rounded-2xl px-5 py-4 text-sm shadow-md transition-all ${style.container}`}>
+                                    
+                                    {/* Icono decorativo para mensajes especiales */}
+                                    {style.icon && (
+                                        <div className="absolute -top-3 -left-3 p-1.5 rounded-full bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-700 z-10">
+                                            {style.icon}
+                                        </div>
+                                    )}
+
+                                    <div className="leading-relaxed font-sans text-[13px] sm:text-sm">
                                         {formatMessageText(msg.message)}
                                     </div>
 
-                                    <div className={`text-[10px] mt-2 flex items-center justify-end gap-1 opacity-70 
-                                        ${isMe ? 'text-blue-100' : 'text-slate-400'}`}>
+                                    <div className={`text-[10px] mt-2 flex items-center justify-end gap-1 opacity-70`}>
                                         <span>{msg.date}</span>
                                         {isMe && <Check className="w-3 h-3" />}
                                     </div>
@@ -241,12 +266,11 @@ export const Messages: React.FC<MessagesProps> = ({ messages, partners, onSendMe
                     <div ref={messagesEndRef} />
                 </div>
 
-                {/* Input Area */}
                 <div className="p-4 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 shrink-0">
                     <form onSubmit={handleSend} className="flex gap-3 items-center">
                         <input 
                             type="text" 
-                            className="flex-1 bg-slate-100 dark:bg-slate-700 border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 border rounded-full px-5 py-3 text-sm outline-none transition-all text-slate-800 dark:text-white"
+                            className="flex-1 bg-slate-100 dark:bg-slate-700 border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 border rounded-full px-5 py-3 text-sm outline-none transition-all text-slate-800 dark:text-white placeholder-slate-400"
                             placeholder="Escribe un mensaje..."
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
@@ -260,7 +284,6 @@ export const Messages: React.FC<MessagesProps> = ({ messages, partners, onSendMe
                         </button>
                     </form>
                 </div>
-
              </>
          ) : (
              <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500 p-8 text-center">

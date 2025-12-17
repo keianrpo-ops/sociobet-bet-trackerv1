@@ -15,7 +15,7 @@ import { ForgotPasswordModal } from './components/ForgotPasswordModal';
 import { sheetApi } from './services/sheetApi'; 
 import { Bet, Partner, BetStatus, Message, Fund, Withdrawal } from './types';
 import { calculateBetOutcome, formatCurrency, calculateDashboardStats } from './utils/calculations';
-import { LayoutDashboard, List, DollarSign, LogOut, RefreshCw, UserCircle, Menu, X, Moon, Sun, Mail, Users, Key, Loader2, Database, WifiOff, Settings, CloudDownload, AlertCircle } from 'lucide-react';
+import { LayoutDashboard, List, DollarSign, LogOut, RefreshCw, UserCircle, Menu, X, Moon, Sun, Mail, Users, Key, Loader2, Database, WifiOff, Settings, AlertCircle } from 'lucide-react';
 
 // --- Utils: LocalStorage (Cache para velocidad) ---
 const loadState = <T,>(key: string, fallback: T): T => {
@@ -152,9 +152,9 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
           <div className="ml-auto flex items-center gap-4">
              {/* Local Mode Badge */}
              {isDemoMode && (
-                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-full animate-pulse">
-                    <SafeIcon icon={WifiOff} className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                    <span className="text-xs font-bold text-amber-700 dark:text-amber-300">Modo Local (Sin conexión a Sheets)</span>
+                <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-700 rounded-full animate-pulse">
+                    <SafeIcon icon={WifiOff} className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                    <span className="text-xs font-bold text-rose-700 dark:text-rose-300">Sin conexión a BD</span>
                 </div>
              )}
 
@@ -170,15 +170,15 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
              <button 
               onClick={onSync}
               disabled={isSyncing}
-              title="Descargar datos de la nube (Sobrescribe cambios locales no guardados)"
+              title="Sincronizar datos con Supabase"
               className={`flex items-center gap-2 px-4 py-2 border rounded-lg text-sm font-bold transition-colors shadow-sm disabled:opacity-70 disabled:cursor-not-allowed
                 ${isDemoMode 
-                    ? 'bg-amber-100 border-amber-200 text-amber-800 dark:bg-amber-900 dark:border-amber-800 dark:text-amber-100 hover:bg-amber-200' 
+                    ? 'bg-rose-100 border-rose-200 text-rose-800 dark:bg-rose-900 dark:border-rose-800 dark:text-rose-100 hover:bg-rose-200' 
                     : 'bg-white dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-600'
                 }`}
              >
-               <SafeIcon icon={CloudDownload} className={`w-4 h-4 ${isSyncing ? 'animate-bounce' : ''}`} /> 
-               <span className="hidden sm:inline">{isSyncing ? 'Descargando...' : (isDemoMode ? 'Reconectar' : 'Descargar Datos')}</span>
+               <SafeIcon icon={Database} className={`w-4 h-4 ${isSyncing ? 'animate-bounce' : ''}`} /> 
+               <span className="hidden sm:inline">{isSyncing ? 'Sincronizando...' : (isDemoMode ? 'Reconectar BD' : 'Actualizar')}</span>
              </button>
           </div>
         </header>
@@ -190,8 +190,8 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
                    <div className="bg-white dark:bg-slate-800 px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 border border-slate-200 dark:border-slate-700">
                        <SafeIcon icon={Loader2} className="w-6 h-6 animate-spin text-orange-600" />
                        <div>
-                           <h4 className="font-bold text-slate-800 dark:text-white">Conectando con Google Sheets...</h4>
-                           <p className="text-xs text-slate-500">Descargando últimos datos</p>
+                           <h4 className="font-bold text-slate-800 dark:text-white">Conectando con Supabase...</h4>
+                           <p className="text-xs text-slate-500">Sincronizando base de datos</p>
                        </div>
                    </div>
                </div>
@@ -274,7 +274,7 @@ const App: React.FC = () => {
           if (data === null) {
               setIsDemoMode(true);
               if (isAuthenticated) {
-                 setToast({ message: "⚠️ Sin conexión a Sheets. Usando datos locales.", sender: "Modo Offline" });
+                 setToast({ message: "⚠️ Error conectando a BD. Verifica claves.", sender: "Error Sistema" });
               }
           } else {
               setPartners(data.partners);
@@ -294,7 +294,7 @@ const App: React.FC = () => {
 
       } catch (error) {
           console.error("Error crítico de sincronización:", error);
-          setToast({ message: "Error de red al conectar con Google.", sender: "Sistema" });
+          setToast({ message: "Error de red al conectar con Supabase.", sender: "Sistema" });
           setIsDemoMode(true);
       } finally {
           setIsSyncing(false);
@@ -325,7 +325,8 @@ const App: React.FC = () => {
 
   // --- NOTIFICACIONES AUTOMÁTICAS (ROBOT MEJORADO) ---
   const sendSystemNotification = async (partnerId: string, subject: string, text: string) => {
-      if (!partnerId || partnerId === 'P001') return;
+      // PERMITIR NOTIFICACIONES AL ADMIN (P001) para testing o si el admin tiene apuestas propias
+      if (!partnerId) return;
 
       const newMessage: Message = {
           messageId: `M-SYS-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -340,7 +341,7 @@ const App: React.FC = () => {
       
       setMessages(prev => [...prev, newMessage]);
       await sheetApi.saveMessage(newMessage);
-      setToast({ message: "📩 Notificación enviada al socio", sender: "Sistema" });
+      setToast({ message: `📩 Notificación enviada a ${partners.find(p=>p.partnerId === partnerId)?.name || 'Socio'}`, sender: "Sistema" });
   };
 
   // --- LOGIN ---
@@ -351,6 +352,7 @@ const App: React.FC = () => {
     const safeUser = loginUsername.trim().toLowerCase();
     const safePass = loginPassword.trim();
 
+    // LÓGICA DE PRIMER INICIO (BOOTSTRAP)
     if (partners.length === 0 && safeUser === 'admin' && safePass === '123') {
          const adminProfile: Partner = { 
             partnerId: 'P001', 
@@ -371,13 +373,12 @@ const App: React.FC = () => {
 
          if (!isDemoMode) {
              try {
-                const res: any = await sheetApi.savePartner(adminProfile);
-                if (res?.mode === 'LOCAL_DEMO_SAVED') {
-                    setIsDemoMode(true);
-                    setToast({ message: "Admin creado SOLO localmente.", sender: "Aviso" });
-                }
+                // ESTO CREA EL PRIMER USUARIO EN SUPABASE
+                await sheetApi.savePartner(adminProfile);
+                setToast({ message: "✅ Base de datos inicializada con Admin.", sender: "Setup" });
              } catch(err) {
                 console.error("Error autoinicializando admin", err);
+                setLoginError("Error conectando a BD. Revisa las llaves API.");
              }
          }
          return;
@@ -773,11 +774,11 @@ const App: React.FC = () => {
           </form>
 
           {partners.length === 0 && !isSyncing && (
-             <div className="mt-6 text-center bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg border border-amber-100 dark:border-amber-800">
-                 <p className="text-xs font-bold text-amber-700 dark:text-amber-400 mb-1 flex justify-center items-center gap-1">
-                    <SafeIcon icon={Database} className="w-3 h-3" /> Base de datos vacía
+             <div className="mt-6 text-center bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-100 dark:border-blue-800">
+                 <p className="text-xs font-bold text-blue-700 dark:text-blue-400 mb-1 flex justify-center items-center gap-1">
+                    <SafeIcon icon={Database} className="w-3 h-3" /> Base de Datos Conectada
                  </p>
-                 <p className="text-[10px] text-amber-600 dark:text-amber-500 mb-2">
+                 <p className="text-[10px] text-blue-600 dark:text-blue-500 mb-2">
                      Ingresa como <b>admin / 123</b> para inicializar la nube.
                  </p>
              </div>
