@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter, Routes, Route, Navigate, NavLink } from 'react-router-dom';
 import { Dashboard } from './components/Dashboard';
 import { BetTable } from './components/BetTable';
@@ -15,7 +15,7 @@ import { ForgotPasswordModal } from './components/ForgotPasswordModal';
 import { sheetApi } from './services/sheetApi'; 
 import { Bet, Partner, BetStatus, Message, Fund, Withdrawal } from './types';
 import { calculateBetOutcome, formatCurrency, calculateDashboardStats } from './utils/calculations';
-import { LayoutDashboard, List, DollarSign, LogOut, RefreshCw, UserCircle, Menu, X, Moon, Sun, Mail, Users, Key, Loader2, Database, WifiOff, Settings, AlertCircle } from 'lucide-react';
+import { LayoutDashboard, List, DollarSign, LogOut, RefreshCw, UserCircle, Menu, X, Moon, Sun, Mail, Users, Key, Loader2, Database, WifiOff, Settings, AlertCircle, Clock } from 'lucide-react';
 
 // --- Utils: LocalStorage (Cache para velocidad) ---
 const loadState = <T,>(key: string, fallback: T): T => {
@@ -58,7 +58,7 @@ const SidebarItem = ({ to, icon, label, onClick }: any) => {
   );
 };
 
-const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isSyncing, isDemoMode, onOpenProfile }: any) => {
+const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isSyncing, isDemoMode, onOpenProfile, lastUpdate }: any) => {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
 
   return (
@@ -150,6 +150,14 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
           </button>
           
           <div className="ml-auto flex items-center gap-4">
+             {/* Last Update Info */}
+             {lastUpdate && (
+                 <div className="hidden md:flex items-center gap-1.5 text-[10px] font-medium text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800 px-2 py-1 rounded border border-slate-100 dark:border-slate-700">
+                     <Clock className="w-3 h-3" />
+                     <span>Actualizado: {lastUpdate}</span>
+                 </div>
+             )}
+
              {/* Local Mode Badge */}
              {isDemoMode && (
                 <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-700 rounded-full animate-pulse">
@@ -229,6 +237,7 @@ const App: React.FC = () => {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false); 
+  const [lastUpdate, setLastUpdate] = useState<string>('');
   
   // Login Inputs
   const [loginUsername, setLoginUsername] = useState('');
@@ -261,9 +270,19 @@ const App: React.FC = () => {
       }
   }, [isAuthenticated, user, selectedPartner]);
 
-  // --- API SYNC FUNCTION (MEJORADA CON MODO SILENCIOSO Y ACTUALIZACIÓN DE SESIÓN) ---
+  // REF para tracking de sincronización en polling (evita stale closures)
+  const isSyncingRef = useRef(isSyncing);
+  useEffect(() => { isSyncingRef.current = isSyncing; }, [isSyncing]);
+
+  // --- API SYNC FUNCTION (MEJORADA) ---
   const performSync = useCallback(async (silent = false) => {
+      // Si ya está sincronizando, no hacer nada (doble protección)
+      if (isSyncingRef.current) return;
+
       if (!silent) setIsSyncing(true);
+      // Marcamos en ref inmediatamente
+      isSyncingRef.current = true;
+
       try {
           const data = await sheetApi.syncAll();
           
@@ -276,29 +295,31 @@ const App: React.FC = () => {
                   }
               }
           } else {
-              setPartners(data.partners);
+              // ACTUALIZAR ESTADOS
+              // Usamos callback form en setters para asegurar consistencia si React batea actualizaciones
+              setPartners(prev => {
+                  // Si cambió algo crítico en el usuario actual, actualizarlo
+                  if (isAuthenticated && user.partnerId && user.partnerId !== 'P001') {
+                      const currentUserData = data.partners.find(p => p.partnerId === user.partnerId);
+                      if (currentUserData && currentUserData.name !== user.name) {
+                          setUser(u => ({ ...u, name: currentUserData.name }));
+                      }
+                  }
+                  return data.partners;
+              });
               setBets(data.bets);
               setFunds(data.funds);
               setWithdrawals(data.withdrawals);
               setMessages(data.messages);
 
+              // Guardar en caché
               saveState('sb_partners', data.partners);
               saveState('sb_bets', data.bets);
               saveState('sb_funds', data.funds);
               saveState('sb_withdrawals', data.withdrawals);
               saveState('sb_messages', data.messages);
               
-              // REFRESCAR DATOS DE SESIÓN DEL USUARIO (IMPORTANTE PARA "EL SOCIO NO ACTUALIZA")
-              if (isAuthenticated && user.partnerId && user.partnerId !== 'P001') {
-                   const currentUserData = data.partners.find(p => p.partnerId === user.partnerId);
-                   if (currentUserData) {
-                       // Si el nombre o el profit cambiaron en la BD, actualizamos el estado local del usuario
-                       if (currentUserData.name !== user.name) {
-                           setUser(prev => ({ ...prev, name: currentUserData.name }));
-                       }
-                   }
-              }
-
+              setLastUpdate(new Date().toLocaleTimeString());
               setIsDemoMode(false);
           }
 
@@ -310,6 +331,7 @@ const App: React.FC = () => {
           }
       } finally {
           setIsSyncing(false);
+          isSyncingRef.current = false;
       }
   }, [isAuthenticated, user]);
 
@@ -317,19 +339,22 @@ const App: React.FC = () => {
   useEffect(() => {
       if (!isAuthenticated) return;
 
-      // Sincronización inicial
+      // Sincronización inicial al montar
       performSync(false);
 
       // Polling cada 15 segundos para traer mensajes y cambios
       const intervalId = setInterval(() => {
-          if (!isSyncing) {
+          // Usar la referencia para saber si ya está corriendo
+          if (!isSyncingRef.current) {
+              console.log("Auto-syncing..."); // Debug log
               performSync(true); // Silent sync
           }
       }, 15000);
 
       return () => clearInterval(intervalId);
-  }, [isAuthenticated, performSync]); // isSyncing se chequea dentro del intervalo
+  }, [isAuthenticated, performSync]); 
   
+  // Persistencia de estados
   useEffect(() => { saveState('sb_partners', partners); }, [partners]);
   useEffect(() => { saveState('sb_bets', bets); }, [bets]);
   useEffect(() => { saveState('sb_funds', funds); }, [funds]);
@@ -840,6 +865,7 @@ const App: React.FC = () => {
         isSyncing={isSyncing}
         isDemoMode={isDemoMode}
         onOpenProfile={() => setIsProfileOpen(true)}
+        lastUpdate={lastUpdate}
       >
         {toast && <Toast message={toast.message} sender={toast.sender} onClose={() => setToast(null)} />}
         
