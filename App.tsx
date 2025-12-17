@@ -693,34 +693,59 @@ const App: React.FC = () => {
 
   const handleAddFund = async (newFund: Fund) => {
       setFunds(prev => [newFund, ...prev]);
-      await sheetApi.saveFund(newFund);
-      
-      await sendSystemNotification(
-          newFund.partnerId || '',
-          "💵 Depósito Confirmado",
-          `🏦 **INGRESO DE CAPITAL**\n--------------------------------\nSe ha registrado un nuevo movimiento de fondos a tu favor.\n\n💰 **Monto:** ${formatCurrency(newFund.amountCOP)}\n📝 **Detalle:** ${newFund.description}\n\n*Este capital ya se encuentra disponible para operar.*`
-      );
-      
-      setToast({ message: "Depósito registrado y notificado", sender: "Caja" });
-  };
-
-  const handleUpdateWithdrawal = async (updatedWithdrawal: Withdrawal) => {
-      setWithdrawals(prev => prev.map(w => w.withdrawalId === updatedWithdrawal.withdrawalId ? updatedWithdrawal : w));
-      await sheetApi.updateWithdrawal(updatedWithdrawal);
-      
-      if (['APPROVED', 'PAID', 'REJECTED'].includes(updatedWithdrawal.status)) {
-          let statusText = updatedWithdrawal.status === 'PAID' ? '✅ PAGADO' : (updatedWithdrawal.status === 'APPROVED' ? '👍 APROBADO' : '🚫 RECHAZADO');
+      try {
+          await sheetApi.saveFund(newFund);
           await sendSystemNotification(
-              updatedWithdrawal.partnerId,
-              "🏦 Actualización de Retiro",
-              `🔔 **ESTADO DE RETIRO ACTUALIZADO**\n\nTu solicitud por **${formatCurrency(updatedWithdrawal.amountCOP)}** ha cambiado de estado a:\n\n👉 **${statusText}**\n\n${updatedWithdrawal.status === 'PAID' ? 'Por favor verifica tu cuenta bancaria.' : 'Consulta la sección de Fondos para más detalles.'}`
+              newFund.partnerId || '',
+              "💵 Depósito Confirmado",
+              `🏦 **INGRESO DE CAPITAL**\n--------------------------------\nSe ha registrado un nuevo movimiento de fondos a tu favor.\n\n💰 **Monto:** ${formatCurrency(newFund.amountCOP)}\n📝 **Detalle:** ${newFund.description}\n\n*Este capital ya se encuentra disponible para operar.*`
           );
+          setToast({ message: "Depósito registrado y notificado", sender: "Caja" });
+      } catch (err) {
+          console.error("Error save fund", err);
+          setToast({ message: "❌ Error guardando depósito en BD", sender: "Sistema" });
       }
   };
 
+  // --- BLINDADO: UPDATE WITHDRAWAL ---
+  const handleUpdateWithdrawal = async (updatedWithdrawal: Withdrawal) => {
+      // 1. Optimistic Update (Visual Instantaneo)
+      setWithdrawals(prev => prev.map(w => w.withdrawalId === updatedWithdrawal.withdrawalId ? updatedWithdrawal : w));
+      
+      try {
+          // 2. Database Save
+          await sheetApi.updateWithdrawal(updatedWithdrawal);
+          
+          // 3. Notification (Solo si se guardó bien)
+          if (['APPROVED', 'PAID', 'REJECTED'].includes(updatedWithdrawal.status)) {
+              let statusText = updatedWithdrawal.status === 'PAID' ? '✅ PAGADO' : (updatedWithdrawal.status === 'APPROVED' ? '👍 APROBADO' : '🚫 RECHAZADO');
+              await sendSystemNotification(
+                  updatedWithdrawal.partnerId,
+                  "🏦 Actualización de Retiro",
+                  `🔔 **ESTADO DE RETIRO ACTUALIZADO**\n\nTu solicitud por **${formatCurrency(updatedWithdrawal.amountCOP)}** ha cambiado de estado a:\n\n👉 **${statusText}**\n\n${updatedWithdrawal.status === 'PAID' ? 'Por favor verifica tu cuenta bancaria.' : 'Consulta la sección de Fondos para más detalles.'}`
+              );
+          }
+          setToast({ message: "Retiro actualizado correctamente.", sender: "Sistema" });
+
+      } catch (err) {
+          console.error("Failed to update withdrawal in DB", err);
+          // 4. Rollback visual o Aviso de Error
+          setToast({ message: "❌ ERROR CRÍTICO: No se guardó en la base de datos.", sender: "Error BD" });
+          // Opcional: Refrescar para revertir visualmente y no confundir
+          setTimeout(() => performSync(true), 2000);
+      }
+  };
+
+  // --- BLINDADO: UPDATE FUND ---
   const handleUpdateFund = async (updatedFund: Fund) => {
       setFunds(prev => prev.map(f => f.fundId === updatedFund.fundId ? updatedFund : f));
-      await sheetApi.updateFund(updatedFund);
+      try {
+          await sheetApi.updateFund(updatedFund);
+          setToast({ message: "Fondo actualizado.", sender: "Sistema" });
+      } catch(err) {
+          console.error("Error updating fund", err);
+          setToast({ message: "❌ Error actualizando fondo.", sender: "Error BD" });
+      }
   };
 
   const handleDeleteFund = async (fundId: string) => {
