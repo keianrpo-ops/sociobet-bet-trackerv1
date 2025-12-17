@@ -2,13 +2,11 @@ import { Partner, Bet, Fund, Withdrawal, Message } from '../types';
 import { supabase } from '../lib/supabase';
 
 // --- SUPABASE API SERVICE ---
-// Ya no necesitamos sheetMapper porque Supabase devuelve JSON limpio.
 
 export const sheetApi = {
     // 1. SYNC: Load everything
     async syncAll() {
         try {
-            // Ejecutamos todas las peticiones en paralelo a Supabase
             const [partners, bets, funds, withdrawals, messages] = await Promise.all([
                 supabase.from('Partners').select('*'),
                 supabase.from('Bets').select('*'),
@@ -17,9 +15,8 @@ export const sheetApi = {
                 supabase.from('Messages').select('*')
             ]);
 
-            // Si hay error en la conexión o configuración
             if (partners.error || bets.error) {
-                console.error("Supabase Error:", partners.error || bets.error);
+                console.error("Supabase Error (Sync):", partners.error || bets.error);
                 return null;
             }
 
@@ -63,20 +60,31 @@ export const sheetApi = {
         return { success: true };
     },
 
-    // 3. UPDATE
+    // 3. UPDATE CON VERIFICACIÓN
     async updateBet(b: Bet) { 
-        const { error } = await supabase.from('Bets').update(b).eq('betId', b.betId);
+        const { error, count } = await supabase.from('Bets').update(b).eq('betId', b.betId).select('betId', { count: 'exact' });
         if (error) throw error;
+        if (count === 0) throw new Error(`No se encontró la apuesta ID: ${b.betId}`);
         return { success: true };
     },
     async updateFund(f: Fund) { 
-        const { error } = await supabase.from('Funds').update(f).eq('fundId', f.fundId);
+        const { error, count } = await supabase.from('Funds').update(f).eq('fundId', f.fundId).select('fundId', { count: 'exact' });
         if (error) throw error;
+        if (count === 0) throw new Error(`No se encontró el fondo ID: ${f.fundId}`);
         return { success: true };
     },
     async updateWithdrawal(w: Withdrawal) { 
-        const { error } = await supabase.from('Withdrawals').update(w).eq('withdrawalId', w.withdrawalId);
-        if (error) throw error;
+        // Eliminamos campos UI que no existan en BD si es necesario, pero asumimos coincidencia
+        const { error, count } = await supabase.from('Withdrawals').update(w).eq('withdrawalId', w.withdrawalId).select('withdrawalId', { count: 'exact' });
+        
+        if (error) {
+            console.error("Supabase Update Error:", error);
+            throw error;
+        }
+        if (count === 0) {
+            console.warn("Update success but 0 rows affected. ID might be wrong:", w.withdrawalId);
+            throw new Error(`Registro no encontrado en BD (ID: ${w.withdrawalId})`);
+        }
         return { success: true };
     },
     async updatePartner(p: Partner) { 
