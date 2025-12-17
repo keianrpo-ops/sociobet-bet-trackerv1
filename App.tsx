@@ -157,7 +157,7 @@ const Layout = ({ children, user, onLogout, onSync, isDarkMode, toggleTheme, isS
                      {!isSyncing && <div className="absolute top-0 left-0 w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping opacity-75"></div>}
                  </div>
                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                     {isSyncing ? 'Sincronizando...' : 'En Vivo'}
+                     {isSyncing ? 'Guardando...' : 'En Línea'}
                  </span>
              </div>
 
@@ -298,7 +298,6 @@ const App: React.FC = () => {
                   }
               }
           } else {
-              console.log(`[System] Sync Successful. Fetched ${data.bets.length} bets.`);
               // ACTUALIZAR ESTADOS
               setPartners(prev => {
                   if (isAuthenticated && user.partnerId && user.partnerId !== 'P001') {
@@ -491,6 +490,10 @@ const App: React.FC = () => {
 
   // --- SAVE BET (NEW/EDIT) ---
   const handleSaveBet = async (betData: any) => {
+    // Para apuestas es más complejo el rollback por la cantidad de estados derivados,
+    // pero aplicamos la misma lógica de snapshot.
+    const oldBets = [...bets];
+    
     let newBetObj: Bet | null = null;
     let isNew = false;
     let partnerNameForToast = '';
@@ -526,28 +529,35 @@ const App: React.FC = () => {
             return b;
         });
 
-        setBets(updatedBets); // Actualizar Estado Local
+        setBets(updatedBets); // Optimistic Update
         
         if (newBetObj) {
-            await sheetApi.updateBet(newBetObj);
-            
-            // 2. Calcular Saldo Actualizado (Snapshot)
-            const partnerStats = calculateDashboardStats(updatedBets, partners, betData.partnerId, funds, withdrawals);
-            const newBalance = partnerStats.currentBalance;
-            const balanceMsg = `\n\n💰 **Nuevo Saldo Disponible:** ${formatCurrency(newBalance)}`;
+            try {
+                const updateRes = await sheetApi.updateBet(newBetObj);
+                if (!updateRes.success) throw new Error("DB Error");
 
-            // 3. Generar Mensaje de Auditoría Detallado
-            const changeLog = changes.length > 0 ? changes.join('\n') : "• Corrección menor de datos o notas.";
-            
-            await sendSystemNotification(
-                betData.partnerId,
-                "📝 Auditoría: Apuesta Modificada",
-                `⚠️ **ACTUALIZACIÓN DE MOVIMIENTO**\n--------------------------------\nEl administrador ha realizado ajustes en la operación:\n\n⚽ **Evento:** ${betData.homeTeam} vs ${betData.awayTeam}\n\n📋 **Bitácora de Cambios:**\n${changeLog}${balanceMsg}`
-            );
+                // 2. Calcular Saldo Actualizado (Snapshot)
+                const partnerStats = calculateDashboardStats(updatedBets, partners, betData.partnerId, funds, withdrawals);
+                const newBalance = partnerStats.currentBalance;
+                const balanceMsg = `\n\n💰 **Nuevo Saldo Disponible:** ${formatCurrency(newBalance)}`;
 
-            // Obtener nombre para Toast
-            const p = partners.find(p => p.partnerId === betData.partnerId);
-            partnerNameForToast = p ? p.name : 'Socio';
+                // 3. Generar Mensaje de Auditoría Detallado
+                const changeLog = changes.length > 0 ? changes.join('\n') : "• Corrección menor de datos o notas.";
+                
+                await sendSystemNotification(
+                    betData.partnerId,
+                    "📝 Auditoría: Apuesta Modificada",
+                    `⚠️ **ACTUALIZACIÓN DE MOVIMIENTO**\n--------------------------------\nEl administrador ha realizado ajustes en la operación:\n\n⚽ **Evento:** ${betData.homeTeam} vs ${betData.awayTeam}\n\n📋 **Bitácora de Cambios:**\n${changeLog}${balanceMsg}`
+                );
+
+                const p = partners.find(p => p.partnerId === betData.partnerId);
+                partnerNameForToast = p ? p.name : 'Socio';
+                setToast({ message: `Notificación de cambios enviada a ${partnerNameForToast}`, sender: "Auditoría" });
+
+            } catch (err: any) {
+                setBets(oldBets); // ROLLBACK
+                setToast({ message: `❌ Error guardando apuesta: ${err.message}`, sender: "Base de Datos" });
+            }
         }
 
         setBetToEdit(null);
@@ -562,33 +572,33 @@ const App: React.FC = () => {
         };
         newBetObj = newBet;
         setBets([newBet, ...bets]);
-        await sheetApi.saveBet(newBet);
         
-        // TICKET DETALLADO NUEVA APUESTA
-        await sendSystemNotification(
-            newBet.partnerId,
-            "🎲 Nueva Inversión",
-            `🔔 **NUEVA APUESTA REGISTRADA**\n--------------------------------\n⚽ **Evento:** ${newBet.homeTeam} vs ${newBet.awayTeam}\n🎯 **Mercado:** ${newBet.marketDescription}\n\n📥 **Inversión (Stake):** ${formatCurrency(newBet.stakeCOP)}\n📊 **Cuota:** ${newBet.oddsDecimal}\n🏆 **Retorno Potencial:** ${formatCurrency(newBet.expectedReturnCOP)}\n\n*La operación ya se encuentra activa en tu portafolio.*`
-        );
-        
-        const p = partners.find(p => p.partnerId === betData.partnerId);
-        partnerNameForToast = p ? p.name : 'Socio';
+        try {
+            await sheetApi.saveBet(newBet);
+            
+            // TICKET DETALLADO NUEVA APUESTA
+            await sendSystemNotification(
+                newBet.partnerId,
+                "🎲 Nueva Inversión",
+                `🔔 **NUEVA APUESTA REGISTRADA**\n--------------------------------\n⚽ **Evento:** ${newBet.homeTeam} vs ${newBet.awayTeam}\n🎯 **Mercado:** ${newBet.marketDescription}\n\n📥 **Inversión (Stake):** ${formatCurrency(newBet.stakeCOP)}\n📊 **Cuota:** ${newBet.oddsDecimal}\n🏆 **Retorno Potencial:** ${formatCurrency(newBet.expectedReturnCOP)}\n\n*La operación ya se encuentra activa en tu portafolio.*`
+            );
+            
+            const p = partners.find(p => p.partnerId === betData.partnerId);
+            partnerNameForToast = p ? p.name : 'Socio';
+            setToast({ message: `Apuesta creada para ${partnerNameForToast}`, sender: "Sistema" });
+
+        } catch (err: any) {
+            setBets(oldBets); // ROLLBACK
+            setToast({ message: `❌ Error creando apuesta: ${err.message}`, sender: "Base de Datos" });
+        }
     }
     
     setIsModalOpen(false);
-    
-    // --- TOAST PERSONALIZADO ---
-    if(newBetObj) {
-        if (isNew) {
-            setToast({ message: `Apuesta creada para ${partnerNameForToast}`, sender: "Sistema" });
-        } else {
-            setToast({ message: `Notificación de cambios enviada a ${partnerNameForToast}`, sender: "Auditoría" });
-        }
-    }
   };
 
   // --- UPDATE STATUS (RESULTADOS) ---
   const handleUpdateBetStatus = async (betId: string, newStatus: BetStatus, cashoutVal?: number) => {
+      const oldBets = [...bets]; // Snapshot
       const currentBet = bets.find(b => b.betId === betId);
       if (!currentBet) return;
 
@@ -616,13 +626,14 @@ const App: React.FC = () => {
           return bet;
       });
       
-      // 2. Actualizar Estado Global
+      // 2. Actualizar Estado Global (Optimistic)
       setBets(updatedBets);
       
-      // 3. Notificar y Calcular Saldo
+      // 3. Persistir y Notificar
       if (targetBet && targetBet.partnerId) {
           try {
-              await sheetApi.updateBet(targetBet);
+              const res = await sheetApi.updateBet(targetBet);
+              if(!res.success) throw new Error("API Failure");
               
               const partner = partners.find(p => p.partnerId === targetBet!.partnerId);
               const sharePct = partner?.partnerProfitPct || 50;
@@ -660,9 +671,10 @@ const App: React.FC = () => {
                   );
               }
 
-          } catch (err) {
+          } catch (err: any) {
               console.error("Error updating bet", err);
-              setToast({ message: "Error guardando en la nube.", sender: "Sistema" });
+              setBets(oldBets); // ROLLBACK
+              setToast({ message: `❌ Error al actualizar estado: ${err.message}`, sender: "Base de Datos" });
           }
       }
   };
@@ -673,25 +685,32 @@ const App: React.FC = () => {
         betId: `B-IMP-${Date.now()}-${i}`,
         expectedReturnCOP: b.stakeCOP * b.oddsDecimal
      }));
+     const oldBets = [...bets];
      setBets([...newBets, ...bets]);
-     for (const b of newBets) {
-         await sheetApi.saveBet(b);
-     }
      
-     // Notificación masiva única
-     if (newBets.length > 0) {
-         const pid = newBets[0].partnerId;
-         await sendSystemNotification(
-             pid,
-             "📥 Carga Masiva",
-             `📁 **IMPORTACIÓN EXITOSA**\n\nSe han cargado **${newBets.length} nuevas operaciones** a tu portafolio mediante proceso masivo.\n\nPuedes ver los detalles de cada una en tu Historial de Apuestas.`
-         );
+     try {
+         // Secuencial para evitar race conditions en insert masivo simple
+         for (const b of newBets) {
+             await sheetApi.saveBet(b);
+         }
+         
+         if (newBets.length > 0) {
+             const pid = newBets[0].partnerId;
+             await sendSystemNotification(
+                 pid,
+                 "📥 Carga Masiva",
+                 `📁 **IMPORTACIÓN EXITOSA**\n\nSe han cargado **${newBets.length} nuevas operaciones** a tu portafolio mediante proceso masivo.\n\nPuedes ver los detalles de cada una en tu Historial de Apuestas.`
+             );
+         }
+         setToast({ message: `${newBets.length} apuestas importadas.`, sender: "Importador" });
+     } catch (err: any) {
+         setBets(oldBets); // ROLLBACK
+         setToast({ message: `❌ Error importando apuestas: ${err.message}`, sender: "Base de Datos" });
      }
-
-     setToast({ message: `${newBets.length} apuestas importadas.`, sender: "Importador" });
   };
 
   const handleAddFund = async (newFund: Fund) => {
+      const oldFunds = [...funds];
       setFunds(prev => [newFund, ...prev]);
       try {
           await sheetApi.saveFund(newFund);
@@ -701,22 +720,27 @@ const App: React.FC = () => {
               `🏦 **INGRESO DE CAPITAL**\n--------------------------------\nSe ha registrado un nuevo movimiento de fondos a tu favor.\n\n💰 **Monto:** ${formatCurrency(newFund.amountCOP)}\n📝 **Detalle:** ${newFund.description}\n\n*Este capital ya se encuentra disponible para operar.*`
           );
           setToast({ message: "Depósito registrado y notificado", sender: "Caja" });
-      } catch (err) {
+      } catch (err: any) {
           console.error("Error save fund", err);
-          setToast({ message: "❌ Error guardando depósito en BD", sender: "Sistema" });
+          setFunds(oldFunds); // ROLLBACK
+          setToast({ message: `❌ Error guardando depósito: ${err.message}`, sender: "Sistema" });
       }
   };
 
-  // --- BLINDADO: UPDATE WITHDRAWAL ---
+  // --- BLINDADO: UPDATE WITHDRAWAL CON ROLLBACK ---
   const handleUpdateWithdrawal = async (updatedWithdrawal: Withdrawal) => {
-      // 1. Optimistic Update (Visual Instantaneo)
+      // 1. Snapshot del estado anterior
+      const oldWithdrawals = [...withdrawals];
+      
+      // 2. Optimistic Update (Visual Instantaneo)
       setWithdrawals(prev => prev.map(w => w.withdrawalId === updatedWithdrawal.withdrawalId ? updatedWithdrawal : w));
       
       try {
-          // 2. Database Save
-          await sheetApi.updateWithdrawal(updatedWithdrawal);
+          // 3. Database Save
+          const response = await sheetApi.updateWithdrawal(updatedWithdrawal);
+          if (!response.success) throw new Error("API devolvió error desconocido");
           
-          // 3. Notification (Solo si se guardó bien)
+          // 4. Notification (Solo si se guardó bien)
           if (['APPROVED', 'PAID', 'REJECTED'].includes(updatedWithdrawal.status)) {
               let statusText = updatedWithdrawal.status === 'PAID' ? '✅ PAGADO' : (updatedWithdrawal.status === 'APPROVED' ? '👍 APROBADO' : '🚫 RECHAZADO');
               await sendSystemNotification(
@@ -727,31 +751,39 @@ const App: React.FC = () => {
           }
           setToast({ message: "Retiro actualizado correctamente.", sender: "Sistema" });
 
-      } catch (err) {
+      } catch (err: any) {
           console.error("Failed to update withdrawal in DB", err);
-          // 4. Rollback visual o Aviso de Error
-          setToast({ message: "❌ ERROR CRÍTICO: No se guardó en la base de datos.", sender: "Error BD" });
-          // Opcional: Refrescar para revertir visualmente y no confundir
-          setTimeout(() => performSync(true), 2000);
+          // 5. ROLLBACK: Revertir al estado anterior para que el usuario vea que falló
+          setWithdrawals(oldWithdrawals);
+          setToast({ message: `❌ ERROR CRÍTICO: No se guardó. ${err.message}`, sender: "Error BD" });
       }
   };
 
-  // --- BLINDADO: UPDATE FUND ---
+  // --- BLINDADO: UPDATE FUND CON ROLLBACK ---
   const handleUpdateFund = async (updatedFund: Fund) => {
+      const oldFunds = [...funds];
       setFunds(prev => prev.map(f => f.fundId === updatedFund.fundId ? updatedFund : f));
       try {
-          await sheetApi.updateFund(updatedFund);
+          const res = await sheetApi.updateFund(updatedFund);
+          if(!res.success) throw new Error("API Failure");
           setToast({ message: "Fondo actualizado.", sender: "Sistema" });
-      } catch(err) {
+      } catch(err: any) {
           console.error("Error updating fund", err);
-          setToast({ message: "❌ Error actualizando fondo.", sender: "Error BD" });
+          setFunds(oldFunds); // ROLLBACK
+          setToast({ message: `❌ Error actualizando fondo: ${err.message}`, sender: "Error BD" });
       }
   };
 
   const handleDeleteFund = async (fundId: string) => {
+      const oldFunds = [...funds];
       setFunds(prev => prev.filter(f => f.fundId !== fundId));
-      await sheetApi.deleteFund(fundId);
-      setToast({ message: "Registro eliminado.", sender: "Sistema" });
+      try {
+          await sheetApi.deleteFund(fundId);
+          setToast({ message: "Registro eliminado.", sender: "Sistema" });
+      } catch (err: any) {
+          setFunds(oldFunds); // ROLLBACK
+          setToast({ message: `❌ Error eliminando: ${err.message}`, sender: "Error BD" });
+      }
   };
 
   const handleSendMessage = async (msgData: { partnerId: string, subject: string, body: string }) => {
