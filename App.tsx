@@ -813,6 +813,27 @@ const App: React.FC = () => {
       }
   };
 
+  const handleDeleteMessage = async (messageId: string) => {
+  if (user.role !== 'ADMIN') return;
+
+  const oldMessages = [...messages];
+
+  // UI primero (rápido)
+  setMessages(prev => prev.filter(m => m.messageId !== messageId));
+
+  try {
+    await sheetApi.deleteMessage(messageId);
+    setToast({ message: "Mensaje eliminado.", sender: "Sistema" });
+    performSync(true);
+  } catch (err: any) {
+    // rollback
+    setMessages(oldMessages);
+    const errorMessage = err.message || err.details || "Error desconocido";
+    setToast({ message: `❌ Error eliminando mensaje: ${errorMessage}`, sender: "Error BD" });
+  }
+};
+
+
   const handleSendMessage = async (msgData: { partnerId: string, subject: string, body: string }) => {
       const senderName = user.role === 'ADMIN' ? 'Administrador' : user.name;
       const isFromAdmin = user.role === 'ADMIN';
@@ -1101,6 +1122,7 @@ const App: React.FC = () => {
                     partners={partners}
                     onSendMessage={handleSendMessage}
                     onMarkRead={handleMarkRead}
+                    onDeleteMessage={handleDeleteMessage}   // ✅ NUEVO
                     isAdmin={user.role === 'ADMIN'}
                     currentPartnerId={user.role === 'PARTNER' ? user.partnerId : undefined}
                 />
